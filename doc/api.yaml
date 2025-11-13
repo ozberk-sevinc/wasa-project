@@ -4,15 +4,18 @@ info:
   version: "1.0.0"
   description: |
     Backend API for the WASAText messaging application.
-    Authentication is done via a simplified login:
-    - POST /session with a username
-    - The response contains a user identifier
-    - That identifier is then sent in the Authorization header as a Bearer token
-    Usernames are globally unique.
+
+    The app uses a very simple login flow:
+    - You call POST /session with a username.
+    - The server responds with a user identifier.
+    - You send that identifier in the Authorization header as a Bearer token
+      on all other requests.
+
+    Usernames must be unique across the whole system.
 
 servers:
   - url: http://localhost:8080
-    description: Local development
+    description: Local development server
 
 components:
   securitySchemes:
@@ -24,67 +27,79 @@ components:
   schemas:
     Error:
       type: object
+      description: A generic error payload returned when something goes wrong.
       properties:
         code:
           type: string
           example: conflict
+          description: Short machine-friendly error code.
         message:
           type: string
-          example: Username already in use
+          example: That username is already taken.
+          description: Human-readable explanation of what went wrong.
       required:
         - code
         - message
 
     User:
       type: object
+      description: A WASAText user. Usernames are unique in the whole system.
       properties:
         id:
           type: string
           example: "abcdef012345"
+          description: Internal identifier of the user.
         name:
           type: string
           minLength: 3
           maxLength: 16
-          description: Unique username (globally unique in the system).
+          description: Unique username chosen by the user.
         displayName:
           type: string
-          description: Optional full name or display name.
+          description: Optional friendly name shown in the UI instead of the username.
         photoUrl:
           type: string
           format: uri
           nullable: true
+          description: URL of the user’s profile picture, if set.
       required:
         - id
         - name
 
     ConversationSummary:
       type: object
-      description: Summary of a conversation shown in the conversations list.
+      description: A short summary of a conversation shown in the conversations list.
       properties:
         id:
           type: string
           example: "conv-123"
+          description: Identifier of the conversation.
         type:
           type: string
           enum: [direct, group]
+          description: Whether this is a direct chat or a group chat.
         title:
           type: string
-          description: Username of the other person (for direct) or group name.
+          description: |
+            For direct conversations: the other user's username.
+            For group conversations: the group name.
         photoUrl:
           type: string
           format: uri
           nullable: true
+          description: Optional conversation or group avatar.
         lastMessageAt:
           type: string
           format: date-time
-          description: Timestamp of the latest message.
+          description: When the last message in this conversation was sent.
         lastMessageSnippet:
           type: string
           nullable: true
-          description: Text snippet or placeholder for non-text (e.g., "[photo]").
+          description: |
+            Short preview of the last message, or a placeholder like "[photo]" for non-text content.
         lastMessageIsPhoto:
           type: boolean
-          description: Whether the last message is a photo.
+          description: True if the most recent message is a photo.
       required:
         - id
         - type
@@ -94,18 +109,22 @@ components:
 
     Reaction:
       type: object
+      description: An emoji reaction to a message.
       properties:
         id:
           type: string
           example: "react-123"
+          description: Identifier of the reaction.
         emoji:
           type: string
           example: "👍"
+          description: The emoji used for the reaction.
         user:
           $ref: '#/components/schemas/User'
         createdAt:
           type: string
           format: date-time
+          description: When this reaction was added.
       required:
         - id
         - emoji
@@ -114,40 +133,50 @@ components:
 
     Message:
       type: object
+      description: A single message inside a conversation.
       properties:
         id:
           type: string
           example: "msg-123"
+          description: Identifier of the message.
         conversationId:
           type: string
+          description: Identifier of the conversation this message belongs to.
         sender:
           $ref: '#/components/schemas/User'
         createdAt:
           type: string
           format: date-time
+          description: When the message was sent.
         contentType:
           type: string
           enum: [text, photo]
+          description: Type of the message content.
         text:
           type: string
           nullable: true
-          description: Present when contentType=text.
+          description: The text of the message, if contentType is "text".
         photoUrl:
           type: string
           format: uri
           nullable: true
-          description: Present when contentType=photo.
+          description: URL of the photo, if contentType is "photo".
         repliedToMessageId:
           type: string
           nullable: true
+          description: If this is a reply, the id of the message being replied to.
         status:
           type: string
           enum: [sent, received, read]
           description: |
-            One checkmark = received (by all recipients in group),
-            two checkmarks = read (by all recipients in group).
+            Delivery status of the message.
+
+            In the UI:
+            - One checkmark = delivered to all recipients in the conversation.
+            - Two checkmarks = read by all recipients in the conversation.
         reactions:
           type: array
+          description: All reactions associated with this message.
           items:
             $ref: '#/components/schemas/Reaction'
       required:
@@ -161,26 +190,31 @@ components:
 
     Conversation:
       type: object
+      description: A full conversation, including all participants and messages.
       properties:
         id:
           type: string
+          description: Identifier of the conversation.
         type:
           type: string
           enum: [direct, group]
+          description: Whether this is a direct chat or a group chat.
         title:
           type: string
-          description: Other user username (direct) or group name.
+          description: Other user's username (for direct) or the group name.
         photoUrl:
           type: string
           format: uri
           nullable: true
+          description: Optional conversation or group avatar.
         participants:
           type: array
+          description: Users that are part of this conversation.
           items:
             $ref: '#/components/schemas/User'
         messages:
           type: array
-          description: Messages ordered reverse-chronologically.
+          description: Messages in this conversation, usually shown in reverse-chronological order.
           items:
             $ref: '#/components/schemas/Message'
       required:
@@ -192,17 +226,22 @@ components:
 
     Group:
       type: object
+      description: A group chat and its members.
       properties:
         id:
           type: string
+          description: Identifier of the group.
         name:
           type: string
+          description: Visible name of the group.
         photoUrl:
           type: string
           format: uri
           nullable: true
+          description: Optional group avatar.
         members:
           type: array
+          description: Users who are currently members of this group.
           items:
             $ref: '#/components/schemas/User'
       required:
@@ -212,49 +251,59 @@ components:
 
     SendMessageRequest:
       type: object
+      description: Body used when sending a new message.
       properties:
         contentType:
           type: string
           enum: [text, photo]
+          description: Whether this is a text message or a photo message.
         text:
           type: string
           nullable: true
+          description: Text content of the message when contentType is "text".
         photoUrl:
           type: string
           format: uri
           nullable: true
+          description: URL of the photo when contentType is "photo".
         replyToMessageId:
           type: string
           nullable: true
+          description: Optional id of another message that this one replies to.
       required:
         - contentType
 
     CommentMessageRequest:
       type: object
+      description: Body used when reacting to a message with an emoji.
       properties:
         emoji:
           type: string
           example: "❤️"
+          description: Emoji used as the reaction.
       required:
         - emoji
 
     ForwardMessageRequest:
       type: object
+      description: Body used when forwarding a message to another conversation.
       properties:
         targetConversationId:
           type: string
-          description: Conversation to forward the message to.
+          description: Id of the conversation that should receive the forwarded message.
       required:
         - targetConversationId
 
     CreateGroupRequest:
       type: object
+      description: Body used when creating a new group chat.
       properties:
         name:
           type: string
+          description: Name of the group.
         memberIds:
           type: array
-          description: List of user identifiers to add as members.
+          description: List of user ids to add as initial members.
           items:
             type: string
       required:
@@ -262,23 +311,27 @@ components:
 
     AddToGroupRequest:
       type: object
+      description: Body used when adding a user to an existing group.
       properties:
         userId:
           type: string
-          description: Identifier of the user to add to the group.
+          description: Id of the user to add to the group.
       required:
         - userId
 
     SetGroupNameRequest:
       type: object
+      description: Body used when renaming a group.
       properties:
         name:
           type: string
+          description: New name for the group.
       required:
         - name
 
     SetMyUserNameRequest:
       type: object
+      description: Body used when changing the current user's username.
       properties:
         name:
           type: string
@@ -290,10 +343,11 @@ components:
 
     SearchUsersResponse:
       type: object
+      description: Response returned when searching for users.
       properties:
         users:
           type: array
-          description: All users matching the search, or all users if no query.
+          description: Users that match the search criteria (or all users if no search was provided).
           items:
             $ref: '#/components/schemas/User'
       required:
@@ -310,17 +364,23 @@ paths:
   /session:
     post:
       tags: ["login"]
-      summary: Logs in the user
+      summary: Log in or register with a username
       description: |
-        If the user does not exist, it will be created and an identifier is returned.
-        If the user exists, the same user identifier is returned.
-        The identifier must be sent in the Authorization header as:
-        "Authorization: Bearer <identifier>" in subsequent requests.
+        Logs in a user using only a username.
+
+        - If the username does not exist yet, a new user is created.
+        - If it already exists, that existing user is reused.
+
+        The response returns an identifier. You must send this identifier as:
+
+        Authorization: Bearer <identifier>
+
+        in all other requests.
       operationId: doLogin
-      security: []   # no auth required for login
+      security: []   # no auth for login
       requestBody:
         required: true
-        description: User details
+        description: Username details for logging in.
         content:
           application/json:
             schema:
@@ -328,7 +388,7 @@ paths:
               properties:
                 name:
                   type: string
-                  example: Maria
+                  example: Ozberk
                   pattern: '^.*$'
                   minLength: 3
                   maxLength: 16
@@ -336,7 +396,7 @@ paths:
                 - name
       responses:
         '201':
-          description: User log-in action successful
+          description: Login succeeded; identifier returned.
           content:
             application/json:
               schema:
@@ -345,10 +405,11 @@ paths:
                   identifier:
                     type: string
                     example: "abcdef012345"
+                    description: Opaque identifier to be used as a Bearer token.
                 required:
                   - identifier
         '400':
-          description: Invalid username (e.g. too short/long)
+          description: The provided username is not valid (for example, too short or too long).
           content:
             application/json:
               schema:
@@ -360,17 +421,18 @@ paths:
   /me:
     get:
       tags: ["me"]
-      summary: Get the current user profile
+      summary: Get information about the current user
+      description: Returns the profile of the user associated with the provided identifier.
       operationId: getMe
       responses:
         '200':
-          description: Current user profile
+          description: Current user profile.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
         '401':
-          description: Missing or invalid Authorization header
+          description: Authorization header is missing or the identifier is invalid.
           content:
             application/json:
               schema:
@@ -379,10 +441,12 @@ paths:
   /me/username:
     put:
       tags: ["me"]
-      summary: Update my username
+      summary: Change my username
       description: |
         Updates the current user's username.
-        The new name must be globally unique; if it already exists, the request fails.
+
+        The new username must be unique. If someone else is already using it,
+        the request will fail with a 409 response.
       operationId: setMyUserName
       requestBody:
         required: true
@@ -392,19 +456,19 @@ paths:
               $ref: '#/components/schemas/SetMyUserNameRequest'
       responses:
         '200':
-          description: Username updated successfully
+          description: Username updated successfully.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
         '400':
-          description: Invalid username
+          description: The new username is invalid (for example, wrong length).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
-          description: Username already in use by another user
+          description: Another user is already using that username.
           content:
             application/json:
               schema:
@@ -413,7 +477,8 @@ paths:
   /me/photo:
     put:
       tags: ["me"]
-      summary: Set my profile photo
+      summary: Upload or change my profile photo
+      description: Sets or updates the current user's profile picture.
       operationId: setMyPhoto
       requestBody:
         required: true
@@ -425,15 +490,16 @@ paths:
                 photo:
                   type: string
                   format: binary
+                  description: Image file to be used as the new profile photo.
       responses:
         '200':
-          description: Profile photo updated
+          description: Profile photo updated successfully.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
         '400':
-          description: Invalid image data
+          description: The uploaded image could not be processed.
           content:
             application/json:
               schema:
@@ -445,9 +511,12 @@ paths:
   /users:
     get:
       tags: ["users"]
-      summary: List/search users
+      summary: List or search users
       description: |
-        Returns all WASAText usernames, optionally filtered by a search query.
+        Returns a list of users.
+
+        - If no query is provided, all users may be returned.
+        - If a query string is provided, only users matching that query are returned.
       operationId: searchUsers
       parameters:
         - in: query
@@ -455,10 +524,10 @@ paths:
           schema:
             type: string
           required: false
-          description: Optional search query over usernames.
+          description: Optional search keyword to match usernames.
       responses:
         '200':
-          description: List of users
+          description: Users matching the search criteria.
           content:
             application/json:
               schema:
@@ -472,12 +541,13 @@ paths:
       tags: ["conversations"]
       summary: Get my conversations
       description: |
-        Returns the list of conversations the current user participates in,
-        sorted in reverse chronological order by latest message.
+        Returns all conversations that the current user is part of.
+
+        The list is sorted so that conversations with the most recent activity appear first.
       operationId: getMyConversations
       responses:
         '200':
-          description: List of conversations
+          description: List of conversation summaries.
           content:
             application/json:
               schema:
@@ -488,9 +558,8 @@ paths:
   /conversations/{conversationId}:
     get:
       tags: ["conversations"]
-      summary: Get a single conversation with messages
-      description: |
-        Returns all messages in the conversation, displayed in reverse chronological order.
+      summary: Get a conversation and its messages
+      description: Returns full details for a single conversation, including its messages.
       operationId: getConversation
       parameters:
         - in: path
@@ -498,15 +567,16 @@ paths:
           required: true
           schema:
             type: string
+          description: Id of the conversation to retrieve.
       responses:
         '200':
-          description: Conversation details
+          description: Conversation details.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Conversation'
         '404':
-          description: Conversation not found or user is not a member
+          description: The conversation does not exist or the user is not a participant.
           content:
             application/json:
               schema:
@@ -517,8 +587,9 @@ paths:
       tags: ["messages"]
       summary: Send a message in a conversation
       description: |
-        Sends a new message in the specified conversation.
-        If it's the first message between two users, the conversation is effectively created.
+        Sends a new message inside the specified conversation.
+
+        For a first message between two users, this effectively creates the conversation.
       operationId: sendMessage
       parameters:
         - in: path
@@ -526,6 +597,7 @@ paths:
           required: true
           schema:
             type: string
+          description: Id of the conversation that should receive the message.
       requestBody:
         required: true
         content:
@@ -534,13 +606,13 @@ paths:
               $ref: '#/components/schemas/SendMessageRequest'
       responses:
         '201':
-          description: Message sent
+          description: Message created and stored successfully.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Message'
         '404':
-          description: Conversation not found or user not a participant
+          description: The conversation could not be found or the user is not a participant.
           content:
             application/json:
               schema:
@@ -549,8 +621,8 @@ paths:
   /conversations/{conversationId}/messages/{messageId}:
     delete:
       tags: ["messages"]
-      summary: Delete a sent message
-      description: Deletes a message previously sent by the current user.
+      summary: Delete one of my messages
+      description: Removes a message that was previously sent by the current user.
       operationId: deleteMessage
       parameters:
         - in: path
@@ -558,22 +630,24 @@ paths:
           required: true
           schema:
             type: string
+          description: Id of the conversation the message belongs to.
         - in: path
           name: messageId
           required: true
           schema:
             type: string
+          description: Id of the message to delete.
       responses:
         '204':
-          description: Message deleted
+          description: Message deleted successfully.
         '403':
-          description: User is not the sender
+          description: The current user is not allowed to delete this message (not the sender).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: Message not found
+          description: The message could not be found.
           content:
             application/json:
               schema:
@@ -583,6 +657,7 @@ paths:
     post:
       tags: ["messages"]
       summary: Forward a message to another conversation
+      description: Creates a new message in another conversation with the content of the original message.
       operationId: forwardMessage
       parameters:
         - in: path
@@ -590,11 +665,13 @@ paths:
           required: true
           schema:
             type: string
+          description: Id of the conversation the original message belongs to.
         - in: path
           name: messageId
           required: true
           schema:
             type: string
+          description: Id of the message to forward.
       requestBody:
         required: true
         content:
@@ -603,13 +680,13 @@ paths:
               $ref: '#/components/schemas/ForwardMessageRequest'
       responses:
         '201':
-          description: Message forwarded successfully
+          description: Message forwarded and created in the target conversation.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Message'
         '404':
-          description: Source or target conversation / message not found
+          description: The original message or the target conversation could not be found.
           content:
             application/json:
               schema:
@@ -618,7 +695,8 @@ paths:
   /conversations/{conversationId}/messages/{messageId}/comments:
     post:
       tags: ["messages"]
-      summary: React to a message (comment with an emoticon)
+      summary: React to a message with an emoji
+      description: Adds an emoji reaction to a message.
       operationId: commentMessage
       parameters:
         - in: path
@@ -626,11 +704,13 @@ paths:
           required: true
           schema:
             type: string
+          description: Id of the conversation the message belongs to.
         - in: path
           name: messageId
           required: true
           schema:
             type: string
+          description: Id of the message to react to.
       requestBody:
         required: true
         content:
@@ -639,13 +719,13 @@ paths:
               $ref: '#/components/schemas/CommentMessageRequest'
       responses:
         '201':
-          description: Reaction added
+          description: Reaction added successfully.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Reaction'
         '404':
-          description: Message not found
+          description: The message could not be found.
           content:
             application/json:
               schema:
@@ -654,7 +734,8 @@ paths:
   /conversations/{conversationId}/messages/{messageId}/comments/{commentId}:
     delete:
       tags: ["messages"]
-      summary: Remove my reaction from a message
+      summary: Remove one of my emoji reactions
+      description: Deletes a reaction previously added by the current user.
       operationId: uncommentMessage
       parameters:
         - in: path
@@ -662,27 +743,30 @@ paths:
           required: true
           schema:
             type: string
+          description: Id of the conversation the message belongs to.
         - in: path
           name: messageId
           required: true
           schema:
             type: string
+          description: Id of the message the reaction is attached to.
         - in: path
           name: commentId
           required: true
           schema:
             type: string
+          description: Id of the reaction to remove.
       responses:
         '204':
-          description: Reaction removed
+          description: Reaction removed successfully.
         '403':
-          description: User is not the author of the reaction
+          description: The current user is not the author of this reaction.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: Reaction not found
+          description: The reaction could not be found.
           content:
             application/json:
               schema:
@@ -694,8 +778,8 @@ paths:
   /groups:
     post:
       tags: ["groups"]
-      summary: Create a new group
-      description: Creates a new group conversation with the specified members.
+      summary: Create a new group chat
+      description: Creates a new group conversation and optionally adds initial members.
       operationId: createGroup
       requestBody:
         required: true
@@ -705,7 +789,7 @@ paths:
               $ref: '#/components/schemas/CreateGroupRequest'
       responses:
         '201':
-          description: Group created
+          description: Group created successfully.
           content:
             application/json:
               schema:
@@ -714,7 +798,8 @@ paths:
   /groups/{groupId}:
     get:
       tags: ["groups"]
-      summary: Get group details
+      summary: Get details about a group
+      description: Returns information about a specific group, including its members.
       operationId: getGroup
       parameters:
         - in: path
@@ -722,15 +807,16 @@ paths:
           required: true
           schema:
             type: string
+          description: Id of the group to retrieve.
       responses:
         '200':
-          description: Group details
+          description: Group details.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Group'
         '404':
-          description: Group not found or user is not a member
+          description: The group does not exist or the user is not a member.
           content:
             application/json:
               schema:
@@ -741,7 +827,9 @@ paths:
       tags: ["groups"]
       summary: Add a user to a group
       description: |
-        Adds a user to the group. Any group member can add other users.
+        Adds a user to the specified group.
+
+        Any member of the group is allowed to add other users.
       operationId: addToGroup
       parameters:
         - in: path
@@ -749,6 +837,7 @@ paths:
           required: true
           schema:
             type: string
+          description: Id of the group to update.
       requestBody:
         required: true
         content:
@@ -757,13 +846,13 @@ paths:
               $ref: '#/components/schemas/AddToGroupRequest'
       responses:
         '200':
-          description: User added to group
+          description: User successfully added to the group.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Group'
         '404':
-          description: Group or user not found
+          description: The group or user could not be found.
           content:
             application/json:
               schema:
@@ -773,7 +862,7 @@ paths:
     delete:
       tags: ["groups"]
       summary: Leave a group
-      description: Current user leaves the specified group.
+      description: Removes the current user from the specified group.
       operationId: leaveGroup
       parameters:
         - in: path
@@ -781,11 +870,12 @@ paths:
           required: true
           schema:
             type: string
+          description: Id of the group to leave.
       responses:
         '204':
-          description: Left group successfully
+          description: The user left the group successfully.
         '404':
-          description: Group not found or user not a member
+          description: The group does not exist or the user is not a member.
           content:
             application/json:
               schema:
@@ -794,7 +884,8 @@ paths:
   /groups/{groupId}/name:
     put:
       tags: ["groups"]
-      summary: Set group name
+      summary: Change the name of a group
+      description: Updates the display name of a group.
       operationId: setGroupName
       parameters:
         - in: path
@@ -802,6 +893,7 @@ paths:
           required: true
           schema:
             type: string
+          description: Id of the group to rename.
       requestBody:
         required: true
         content:
@@ -810,13 +902,13 @@ paths:
               $ref: '#/components/schemas/SetGroupNameRequest'
       responses:
         '200':
-          description: Group name updated
+          description: Group name updated successfully.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Group'
         '404':
-          description: Group not found or user not a member
+          description: The group does not exist or the user is not a member.
           content:
             application/json:
               schema:
@@ -825,7 +917,8 @@ paths:
   /groups/{groupId}/photo:
     put:
       tags: ["groups"]
-      summary: Set group photo
+      summary: Change the group photo
+      description: Sets or updates the avatar image for a group.
       operationId: setGroupPhoto
       parameters:
         - in: path
@@ -833,6 +926,7 @@ paths:
           required: true
           schema:
             type: string
+          description: Id of the group to update.
       requestBody:
         required: true
         content:
@@ -843,15 +937,16 @@ paths:
                 photo:
                   type: string
                   format: binary
+                  description: Image file to be used as the new group photo.
       responses:
         '200':
-          description: Group photo updated
+          description: Group photo updated successfully.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Group'
         '404':
-          description: Group not found or user not a member
+          description: The group does not exist or the user is not a member.
           content:
             application/json:
               schema:
