@@ -9,7 +9,7 @@ For example, this code adds a parameter in `webapi` executable for the database 
 main.WebAPIConfiguration structure):
 
 	DB struct {
-		Filename string `conf:""`
+	    Filename string `conf:""`
 	}
 
 This is an example on how to migrate the DB and connect to it:
@@ -18,12 +18,12 @@ This is an example on how to migrate the DB and connect to it:
 	logger.Println("initializing database support")
 	db, err := sql.Open("sqlite3", "./foo.db")
 	if err != nil {
-		logger.WithError(err).Error("error opening SQLite DB")
-		return fmt.Errorf("opening SQLite: %w", err)
+	    logger.WithError(err).Error("error opening SQLite DB")
+	    return fmt.Errorf("opening SQLite: %w", err)
 	}
 	defer func() {
-		logger.Debug("database stopping")
-		_ = db.Close()
+	    logger.Debug("database stopping")
+	    _ = db.Close()
 	}()
 
 Then you can initialize the AppDatabase and pass it to the api package.
@@ -36,10 +36,94 @@ import (
 	"fmt"
 )
 
+// User represents a WASAText user
+type User struct {
+	ID          string
+	Name        string
+	DisplayName *string
+	PhotoURL    *string
+}
+
+// Conversation represents a conversation (direct or group)
+type Conversation struct {
+	ID       string
+	Type     string // "direct" or "group"
+	Name     string // group name or empty for direct
+	PhotoURL *string
+}
+
+// Message represents a single message
+type Message struct {
+	ID                 string
+	ConversationID     string
+	SenderID           string
+	CreatedAt          string
+	ContentType        string // "text" or "photo"
+	Text               *string
+	PhotoURL           *string
+	RepliedToMessageID *string
+	Status             string // "sent", "received", "read"
+}
+
+// Reaction represents an emoji reaction to a message
+type Reaction struct {
+	ID        string
+	MessageID string
+	UserID    string
+	Emoji     string
+	CreatedAt string
+}
+
+// ConversationSummary represents a conversation with last message info (for listing)
+type ConversationSummary struct {
+	ID                 string
+	Type               string
+	Title              string
+	PhotoURL           *string
+	LastMessageAt      *string
+	LastMessageSnippet *string
+	LastMessageIsPhoto bool
+}
+
 // AppDatabase is the high level interface for the DB
 type AppDatabase interface {
-	GetName() (string, error)
-	SetName(name string) error
+	// User methods
+	CreateUser(id, name string) error
+	GetUserByID(id string) (*User, error)
+	GetUserByName(name string) (*User, error)
+	UpdateUsername(userID, newName string) error
+	UpdateUserPhoto(userID string, photoURL *string) error
+	SearchUsers(query string) ([]User, error)
+	GetAllUsers() ([]User, error)
+
+	// Conversation methods
+	CreateConversation(id, convType, name string) error
+	GetConversationByID(id string) (*Conversation, error)
+	GetConversationsByUser(userID string) ([]Conversation, error)
+	GetConversationSummariesByUser(userID string) ([]ConversationSummary, error)
+	GetLastMessage(conversationID string) (*Message, error)
+	AddParticipant(conversationID, userID string) error
+	RemoveParticipant(conversationID, userID string) error
+	GetParticipants(conversationID string) ([]User, error)
+	IsParticipant(conversationID, userID string) (bool, error)
+	GetDirectConversation(userID1, userID2 string) (*Conversation, error)
+
+	// Message methods
+	CreateMessage(msg Message) error
+	GetMessageByID(id string) (*Message, error)
+	GetMessagesByConversation(conversationID string) ([]Message, error)
+	DeleteMessage(id string) error
+	UpdateMessageStatus(id, status string) error
+
+	// Reaction methods
+	CreateReaction(r Reaction) error
+	GetReactionByID(id string) (*Reaction, error)
+	GetReactionsByMessage(messageID string) ([]Reaction, error)
+	DeleteReaction(id string) error
+
+	// Group-specific methods
+	UpdateConversationName(conversationID, name string) error
+	UpdateConversationPhoto(conversationID string, photoURL *string) error
 
 	Ping() error
 }
@@ -55,20 +139,118 @@ func New(db *sql.DB) (AppDatabase, error) {
 		return nil, errors.New("database is required when building a AppDatabase")
 	}
 
-	// Check if table exists. If not, the database is empty, and we need to create the structure
-	var tableName string
-	err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='example_table';`).Scan(&tableName)
-	if errors.Is(err, sql.ErrNoRows) {
-		sqlStmt := `CREATE TABLE example_table (id INTEGER NOT NULL PRIMARY KEY, name TEXT);`
-		_, err = db.Exec(sqlStmt)
-		if err != nil {
-			return nil, fmt.Errorf("error creating database structure: %w", err)
-		}
+	// Enable foreign keys
+	_, err := db.Exec("PRAGMA foreign_keys = ON")
+	if err != nil {
+		return nil, fmt.Errorf("error enabling foreign keys: %w", err)
+	}
+
+	// Create tables if they don't exist
+	err = createTables(db)
+	if err != nil {
+		return nil, err
 	}
 
 	return &appdbimpl{
 		c: db,
 	}, nil
+}
+
+func createTables(db *sql.DB) error {
+	// Users table
+	_, err := db.Exec(`
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL,
+            display_name TEXT,
+            photo_url TEXT
+        )
+    `)
+	if err != nil {
+		return fmt.Errorf("error creating users table: %w", err)
+	}
+
+	// Conversations table (both direct and group)
+	_, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS conversations (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL CHECK (type IN ('direct', 'group')),
+            name TEXT,
+            photo_url TEXT
+        )
+    `)
+	if err != nil {
+		return fmt.Errorf("error creating conversations table: %w", err)
+	}
+
+	// Conversation participants (who is in which conversation)
+	_, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS conversation_participants (
+            conversation_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            PRIMARY KEY (conversation_id, user_id),
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `)
+	if err != nil {
+		return fmt.Errorf("error creating conversation_participants table: %w", err)
+	}
+
+	// Messages table
+	_, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS messages (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL,
+            sender_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            content_type TEXT NOT NULL CHECK (content_type IN ('text', 'photo')),
+            text TEXT,
+            photo_url TEXT,
+            replied_to_message_id TEXT,
+            status TEXT NOT NULL DEFAULT 'sent' CHECK (status IN ('sent', 'received', 'read')),
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+            FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (replied_to_message_id) REFERENCES messages(id) ON DELETE SET NULL
+        )
+    `)
+	if err != nil {
+		return fmt.Errorf("error creating messages table: %w", err)
+	}
+
+	// Reactions table
+	_, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS reactions (
+            id TEXT PRIMARY KEY,
+            message_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            emoji TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `)
+	if err != nil {
+		return fmt.Errorf("error creating reactions table: %w", err)
+	}
+
+	// Indexes for performance
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)`)
+	if err != nil {
+		return fmt.Errorf("error creating messages index: %w", err)
+	}
+
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_reactions_message ON reactions(message_id)`)
+	if err != nil {
+		return fmt.Errorf("error creating reactions index: %w", err)
+	}
+
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_participants_user ON conversation_participants(user_id)`)
+	if err != nil {
+		return fmt.Errorf("error creating participants index: %w", err)
+	}
+
+	return nil
 }
 
 func (db *appdbimpl) Ping() error {

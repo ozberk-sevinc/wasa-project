@@ -72,7 +72,7 @@ components:
       properties:
         id:
           type: string
-          example: "conv-123"
+          example: "conv_123"
           description: Identifier of the conversation.
         type:
           type: string
@@ -113,7 +113,7 @@ components:
       properties:
         id:
           type: string
-          example: "react-123"
+          example: "react_123"
           description: Identifier of the reaction.
         emoji:
           type: string
@@ -137,7 +137,7 @@ components:
       properties:
         id:
           type: string
-          example: "msg-123"
+          example: "msg_123"
           description: Identifier of the message.
         conversationId:
           type: string
