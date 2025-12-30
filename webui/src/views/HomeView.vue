@@ -1,4 +1,4 @@
-<script>
+go run ./cmd/webapi<script>
 export default {
 	data: function() {
 		return {

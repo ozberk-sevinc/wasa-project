@@ -79,3 +79,21 @@ func (db *appdbimpl) GetAllUsers() ([]User, error) {
 	}
 	return users, rows.Err()
 }
+
+func (db *appdbimpl) GetUsersPaginated(limit, offset int) ([]User, error) {
+	rows, err := db.c.Query("SELECT id, name, display_name, photo_url FROM users LIMIT ? OFFSET ?", limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Name, &u.DisplayName, &u.PhotoURL); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}

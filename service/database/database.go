@@ -58,9 +58,11 @@ type Message struct {
 	ConversationID     string
 	SenderID           string
 	CreatedAt          string
-	ContentType        string // "text" or "photo"
+	ContentType        string // "text", "photo", "audio", "document", "file"
 	Text               *string
 	PhotoURL           *string
+	FileURL            *string
+	FileName           *string
 	RepliedToMessageID *string
 	Status             string // "sent", "received", "read"
 }
@@ -95,6 +97,7 @@ type AppDatabase interface {
 	UpdateUserPhoto(userID string, photoURL *string) error
 	SearchUsers(query string) ([]User, error)
 	GetAllUsers() ([]User, error)
+	GetUsersPaginated(limit, offset int) ([]User, error)
 
 	// Conversation methods
 	CreateConversation(id, convType, name string) error
@@ -112,8 +115,11 @@ type AppDatabase interface {
 	CreateMessage(msg Message) error
 	GetMessageByID(id string) (*Message, error)
 	GetMessagesByConversation(conversationID string) ([]Message, error)
+	GetMessagesByConversationPaginated(conversationID string, limit, offset int) ([]Message, error)
 	DeleteMessage(id string) error
 	UpdateMessageStatus(id, status string) error
+	MarkMessagesAsReceived(userID string) error
+	MarkMessagesAsRead(conversationID, userID string) error
 
 	// Reaction methods
 	CreateReaction(r Reaction) error
@@ -204,9 +210,11 @@ func createTables(db *sql.DB) error {
             conversation_id TEXT NOT NULL,
             sender_id TEXT NOT NULL,
             created_at TEXT NOT NULL,
-            content_type TEXT NOT NULL CHECK (content_type IN ('text', 'photo')),
+            content_type TEXT NOT NULL CHECK (content_type IN ('text', 'photo', 'audio', 'document', 'file')),
             text TEXT,
             photo_url TEXT,
+            file_url TEXT,
+            file_name TEXT,
             replied_to_message_id TEXT,
             status TEXT NOT NULL DEFAULT 'sent' CHECK (status IN ('sent', 'received', 'read')),
             FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
@@ -248,6 +256,18 @@ func createTables(db *sql.DB) error {
 	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_participants_user ON conversation_participants(user_id)`)
 	if err != nil {
 		return fmt.Errorf("error creating participants index: %w", err)
+	}
+
+	// Index for username lookups (login, search, uniqueness check)
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_users_name ON users(name)`)
+	if err != nil {
+		return fmt.Errorf("error creating users name index: %w", err)
+	}
+
+	// Index for message ordering by time
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)`)
+	if err != nil {
+		return fmt.Errorf("error creating messages created_at index: %w", err)
 	}
 
 	return nil

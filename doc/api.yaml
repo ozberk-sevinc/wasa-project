@@ -17,26 +17,111 @@ servers:
   - url: http://localhost:8080
     description: Local development server
 
+tags:
+  - name: login
+    description: Authentication and session management endpoints
+  - name: me
+    description: Current user profile management endpoints
+  - name: users
+    description: User search and listing endpoints
+  - name: conversations
+    description: Conversation listing and details endpoints
+  - name: messages
+    description: Message sending, forwarding, and reaction endpoints
+  - name: groups
+    description: Group chat management endpoints
+
 components:
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: user-identifier
+      description: Bearer token authentication using user identifier
 
   schemas:
+    # ==========================================================================
+    # COMMON STRING PATTERNS (reusable)
+    # ==========================================================================
+    Identifier:
+      type: string
+      description: A unique identifier (UUID format).
+      pattern: '^[a-zA-Z0-9_-]{1,64}$'
+      minLength: 1
+      maxLength: 64
+      example: "abcdef012345"
+
+    Username:
+      type: string
+      description: A unique username (3-16 alphanumeric characters).
+      pattern: '^[a-zA-Z0-9_]{3,16}$'
+      minLength: 3
+      maxLength: 16
+      example: "Ozberk"
+
+    DisplayName:
+      type: string
+      description: Optional friendly display name.
+      pattern: '^.{0,50}$'
+      minLength: 0
+      maxLength: 50
+      example: "Özberk Sevinç"
+
+    Emoji:
+      type: string
+      description: A single emoji character or sequence.
+      pattern: '^.{1,10}$'
+      minLength: 1
+      maxLength: 10
+      example: "👍"
+
+    MessageText:
+      type: string
+      description: Text content of a message.
+      pattern: '^[\s\S]{1,4096}$'
+      minLength: 1
+      maxLength: 4096
+      example: "Hello, world!"
+
+    UrlString:
+      type: string
+      format: uri
+      description: A valid URL string.
+      pattern: '^https?://.*$'
+      minLength: 1
+      maxLength: 2048
+      example: "https://example.com/photo.jpg"
+
+    DateTimeString:
+      type: string
+      format: date-time
+      description: ISO 8601 date-time string.
+      pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
+      minLength: 20
+      maxLength: 35
+      example: "2025-01-01T12:00:00Z"
+
+    # ==========================================================================
+    # CORE SCHEMAS
+    # ==========================================================================
     Error:
       type: object
       description: A generic error payload returned when something goes wrong.
       properties:
         code:
           type: string
-          example: conflict
           description: Short machine-friendly error code.
+          pattern: '^[a-z-]{1,32}$'
+          minLength: 1
+          maxLength: 32
+          example: "conflict"
         message:
           type: string
-          example: That username is already taken.
           description: Human-readable explanation of what went wrong.
+          pattern: '^.{1,500}$'
+          minLength: 1
+          maxLength: 500
+          example: "That username is already taken."
       required:
         - code
         - message
@@ -46,22 +131,21 @@ components:
       description: A WASAText user. Usernames are unique in the whole system.
       properties:
         id:
-          type: string
-          example: "abcdef012345"
-          description: Internal identifier of the user.
+          allOf:
+            - $ref: '#/components/schemas/Identifier'
+            - description: Internal identifier of the user.
         name:
-          type: string
-          minLength: 3
-          maxLength: 16
-          description: Unique username chosen by the user.
+          allOf:
+            - $ref: '#/components/schemas/Username'
+            - description: Unique username chosen by the user.
         displayName:
-          type: string
-          description: Optional friendly name shown in the UI instead of the username.
+          allOf:
+            - $ref: '#/components/schemas/DisplayName'
+            - description: Optional friendly name shown in the UI instead of the username.
         photoUrl:
-          type: string
-          format: uri
-          nullable: true
-          description: URL of the user’s profile picture, if set.
+          allOf:
+            - $ref: '#/components/schemas/UrlString'
+            - description: URL of the user's profile picture, if set.
       required:
         - id
         - name
@@ -71,32 +155,35 @@ components:
       description: A short summary of a conversation shown in the conversations list.
       properties:
         id:
-          type: string
-          example: "conv_123"
-          description: Identifier of the conversation.
+          allOf:
+            - $ref: '#/components/schemas/Identifier'
+            - description: Identifier of the conversation.
         type:
           type: string
           enum: [direct, group]
           description: Whether this is a direct chat or a group chat.
         title:
           type: string
-          description: |
-            For direct conversations: the other user's username.
-            For group conversations: the group name.
+          description: For direct conversations the other user's username. For group conversations the group name.
+          pattern: '^.{1,100}$'
+          minLength: 1
+          maxLength: 100
+          example: "John Doe"
         photoUrl:
-          type: string
-          format: uri
-          nullable: true
-          description: Optional conversation or group avatar.
+          allOf:
+            - $ref: '#/components/schemas/UrlString'
+            - description: Optional conversation or group avatar.
         lastMessageAt:
-          type: string
-          format: date-time
-          description: When the last message in this conversation was sent.
+          allOf:
+            - $ref: '#/components/schemas/DateTimeString'
+            - description: When the last message in this conversation was sent.
         lastMessageSnippet:
           type: string
-          nullable: true
-          description: |
-            Short preview of the last message, or a placeholder like "[photo]" for non-text content.
+          description: Short preview of the last message, or a placeholder like [photo] for non-text content.
+          pattern: '^.{0,200}$'
+          minLength: 0
+          maxLength: 200
+          example: "Hey, how are you?"
         lastMessageIsPhoto:
           type: boolean
           description: True if the most recent message is a photo.
@@ -112,19 +199,19 @@ components:
       description: An emoji reaction to a message.
       properties:
         id:
-          type: string
-          example: "react_123"
-          description: Identifier of the reaction.
+          allOf:
+            - $ref: '#/components/schemas/Identifier'
+            - description: Identifier of the reaction.
         emoji:
-          type: string
-          example: "👍"
-          description: The emoji used for the reaction.
+          allOf:
+            - $ref: '#/components/schemas/Emoji'
+            - description: The emoji used for the reaction.
         user:
           $ref: '#/components/schemas/User'
         createdAt:
-          type: string
-          format: date-time
-          description: When this reaction was added.
+          allOf:
+            - $ref: '#/components/schemas/DateTimeString'
+            - description: When this reaction was added.
       required:
         - id
         - emoji
@@ -136,49 +223,50 @@ components:
       description: A single message inside a conversation.
       properties:
         id:
-          type: string
-          example: "msg_123"
-          description: Identifier of the message.
+          allOf:
+            - $ref: '#/components/schemas/Identifier'
+            - description: Identifier of the message.
         conversationId:
-          type: string
-          description: Identifier of the conversation this message belongs to.
+          allOf:
+            - $ref: '#/components/schemas/Identifier'
+            - description: Identifier of the conversation this message belongs to.
         sender:
           $ref: '#/components/schemas/User'
         createdAt:
-          type: string
-          format: date-time
-          description: When the message was sent.
+          allOf:
+            - $ref: '#/components/schemas/DateTimeString'
+            - description: When the message was sent.
         contentType:
           type: string
           enum: [text, photo]
           description: Type of the message content.
         text:
-          type: string
-          nullable: true
-          description: The text of the message, if contentType is "text".
+          allOf:
+            - $ref: '#/components/schemas/MessageText'
+            - description: The text of the message, if contentType is text.
         photoUrl:
-          type: string
-          format: uri
-          nullable: true
-          description: URL of the photo, if contentType is "photo".
+          allOf:
+            - $ref: '#/components/schemas/UrlString'
+            - description: URL of the photo, if contentType is photo.
         repliedToMessageId:
-          type: string
-          nullable: true
-          description: If this is a reply, the id of the message being replied to.
+          allOf:
+            - $ref: '#/components/schemas/Identifier'
+            - description: If this is a reply, the id of the message being replied to.
         status:
           type: string
           enum: [sent, received, read]
           description: |
-            Delivery status of the message.
-
-            In the UI:
-            - One checkmark = delivered to all recipients in the conversation.
-            - Two checkmarks = read by all recipients in the conversation.
+            Delivery status of the message for the sender:
+            - "sent" = Message sent but not yet received by recipient(s)
+            - "received" = One checkmark - recipient(s) have received it in their conversation list
+            - "read" = Two checkmarks - recipient(s) have opened and viewed the conversation
         reactions:
           type: array
           description: All reactions associated with this message.
           items:
             $ref: '#/components/schemas/Reaction'
+          minItems: 0
+          maxItems: 1000
       required:
         - id
         - conversationId
@@ -193,8 +281,9 @@ components:
       description: A full conversation, including all participants and messages.
       properties:
         id:
-          type: string
-          description: Identifier of the conversation.
+          allOf:
+            - $ref: '#/components/schemas/Identifier'
+            - description: Identifier of the conversation.
         type:
           type: string
           enum: [direct, group]
@@ -202,21 +291,28 @@ components:
         title:
           type: string
           description: Other user's username (for direct) or the group name.
+          pattern: '^.{1,100}$'
+          minLength: 1
+          maxLength: 100
+          example: "Chat Group"
         photoUrl:
-          type: string
-          format: uri
-          nullable: true
-          description: Optional conversation or group avatar.
+          allOf:
+            - $ref: '#/components/schemas/UrlString'
+            - description: Optional conversation or group avatar.
         participants:
           type: array
           description: Users that are part of this conversation.
           items:
             $ref: '#/components/schemas/User'
+          minItems: 1
+          maxItems: 256
         messages:
           type: array
           description: Messages in this conversation, usually shown in reverse-chronological order.
           items:
             $ref: '#/components/schemas/Message'
+          minItems: 0
+          maxItems: 10000
       required:
         - id
         - type
@@ -229,26 +325,35 @@ components:
       description: A group chat and its members.
       properties:
         id:
-          type: string
-          description: Identifier of the group.
+          allOf:
+            - $ref: '#/components/schemas/Identifier'
+            - description: Identifier of the group.
         name:
           type: string
           description: Visible name of the group.
+          pattern: '^.{1,100}$'
+          minLength: 1
+          maxLength: 100
+          example: "Work Team"
         photoUrl:
-          type: string
-          format: uri
-          nullable: true
-          description: Optional group avatar.
+          allOf:
+            - $ref: '#/components/schemas/UrlString'
+            - description: Optional group avatar.
         members:
           type: array
           description: Users who are currently members of this group.
           items:
             $ref: '#/components/schemas/User'
+          minItems: 1
+          maxItems: 256
       required:
         - id
         - name
         - members
 
+    # ==========================================================================
+    # REQUEST SCHEMAS
+    # ==========================================================================
     SendMessageRequest:
       type: object
       description: Body used when sending a new message.
@@ -258,18 +363,17 @@ components:
           enum: [text, photo]
           description: Whether this is a text message or a photo message.
         text:
-          type: string
-          nullable: true
-          description: Text content of the message when contentType is "text".
+          allOf:
+            - $ref: '#/components/schemas/MessageText'
+            - description: Text content of the message when contentType is text.
         photoUrl:
-          type: string
-          format: uri
-          nullable: true
-          description: URL of the photo when contentType is "photo".
+          allOf:
+            - $ref: '#/components/schemas/UrlString'
+            - description: URL of the photo when contentType is photo.
         replyToMessageId:
-          type: string
-          nullable: true
-          description: Optional id of another message that this one replies to.
+          allOf:
+            - $ref: '#/components/schemas/Identifier'
+            - description: Optional id of another message that this one replies to.
       required:
         - contentType
 
@@ -278,9 +382,9 @@ components:
       description: Body used when reacting to a message with an emoji.
       properties:
         emoji:
-          type: string
-          example: "❤️"
-          description: Emoji used as the reaction.
+          allOf:
+            - $ref: '#/components/schemas/Emoji'
+            - description: Emoji used as the reaction.
       required:
         - emoji
 
@@ -289,10 +393,22 @@ components:
       description: Body used when forwarding a message to another conversation.
       properties:
         targetConversationId:
-          type: string
-          description: Id of the conversation that should receive the forwarded message.
+          allOf:
+            - $ref: '#/components/schemas/Identifier'
+            - description: Id of the conversation that should receive the forwarded message.
       required:
         - targetConversationId
+
+    CreateConversationRequest:
+      type: object
+      description: Body used when starting a new direct conversation with another user.
+      properties:
+        userId:
+          allOf:
+            - $ref: '#/components/schemas/Identifier'
+            - description: Id of the user to start a conversation with.
+      required:
+        - userId
 
     CreateGroupRequest:
       type: object
@@ -301,11 +417,17 @@ components:
         name:
           type: string
           description: Name of the group.
+          pattern: '^.{1,100}$'
+          minLength: 1
+          maxLength: 100
+          example: "New Group"
         memberIds:
           type: array
           description: List of user ids to add as initial members.
           items:
-            type: string
+            $ref: '#/components/schemas/Identifier'
+          minItems: 0
+          maxItems: 255
       required:
         - name
 
@@ -314,8 +436,9 @@ components:
       description: Body used when adding a user to an existing group.
       properties:
         userId:
-          type: string
-          description: Id of the user to add to the group.
+          allOf:
+            - $ref: '#/components/schemas/Identifier'
+            - description: Id of the user to add to the group.
       required:
         - userId
 
@@ -326,6 +449,10 @@ components:
         name:
           type: string
           description: New name for the group.
+          pattern: '^.{1,100}$'
+          minLength: 1
+          maxLength: 100
+          example: "Renamed Group"
       required:
         - name
 
@@ -334,10 +461,9 @@ components:
       description: Body used when changing the current user's username.
       properties:
         name:
-          type: string
-          minLength: 3
-          maxLength: 16
-          description: New username; must be globally unique.
+          allOf:
+            - $ref: '#/components/schemas/Username'
+            - description: New username; must be globally unique.
       required:
         - name
 
@@ -350,17 +476,41 @@ components:
           description: Users that match the search criteria (or all users if no search was provided).
           items:
             $ref: '#/components/schemas/User'
+          minItems: 0
+          maxItems: 1000
       required:
         - users
+
+    LoginRequest:
+      type: object
+      description: Body used when logging in or registering with a username.
+      properties:
+        name:
+          allOf:
+            - $ref: '#/components/schemas/Username'
+            - description: Username for login or registration.
+      required:
+        - name
+
+    LoginResponse:
+      type: object
+      description: Response returned after successful login.
+      properties:
+        identifier:
+          allOf:
+            - $ref: '#/components/schemas/Identifier'
+            - description: Opaque identifier to be used as a Bearer token.
+      required:
+        - identifier
 
 security:
   - BearerAuth: []
 
 paths:
 
-  ###################################
+  #########
   # Simplified login (no password)  #
-  ###################################
+  #########
   /session:
     post:
       tags: ["login"]
@@ -384,40 +534,21 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                  example: Ozberk
-                  pattern: '^.*$'
-                  minLength: 3
-                  maxLength: 16
-              required:
-                - name
+              $ref: '#/components/schemas/LoginRequest'
       responses:
         '201':
           description: Login succeeded; identifier returned.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  identifier:
-                    type: string
-                    example: "abcdef012345"
-                    description: Opaque identifier to be used as a Bearer token.
-                required:
-                  - identifier
+                $ref: '#/components/schemas/LoginResponse'
         '400':
           description: The provided username is not valid (for example, too short or too long).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
-  #################
   # Current user  #
-  #################
   /me:
     get:
       tags: ["me"]
@@ -486,11 +617,14 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              description: Multipart form containing the photo file.
               properties:
                 photo:
                   type: string
                   format: binary
                   description: Image file to be used as the new profile photo.
+              required:
+                - photo
       responses:
         '200':
           description: Profile photo updated successfully.
@@ -504,10 +638,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
-  ################
   # Users (search)
-  ################
   /users:
     get:
       tags: ["users"]
@@ -523,6 +654,10 @@ paths:
           name: q
           schema:
             type: string
+            description: Search keyword to match usernames.
+            pattern: '^.{0,100}$'
+            minLength: 0
+            maxLength: 100
           required: false
           description: Optional search keyword to match usernames.
       responses:
@@ -533,10 +668,51 @@ paths:
               schema:
                 $ref: '#/components/schemas/SearchUsersResponse'
 
-  ##########################
+  
   # Conversations & messages
-  ##########################
   /conversations:
+    post:
+      tags: ["conversations"]
+      summary: Start a new direct conversation
+      description: |
+        Creates a new direct (one-to-one) conversation with another user.
+
+        If a direct conversation with this user already exists, returns that existing conversation.
+        The new conversation automatically appears in both users' conversation lists.
+      operationId: startConversation
+      requestBody:
+        required: true
+        description: Details of the user to start a conversation with.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConversationRequest'
+      responses:
+        '201':
+          description: New conversation created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '200':
+          description: A direct conversation with this user already exists; returning the existing one.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '400':
+          description: Invalid request (e.g., trying to start a conversation with yourself).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: The target user does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
     get:
       tags: ["conversations"]
       summary: Get my conversations
@@ -544,6 +720,7 @@ paths:
         Returns all conversations that the current user is part of.
 
         The list is sorted so that conversations with the most recent activity appear first.
+        Viewing this list marks messages from other users as "received" (one checkmark).
       operationId: getMyConversations
       responses:
         '200':
@@ -552,21 +729,26 @@ paths:
             application/json:
               schema:
                 type: array
+                description: List of conversation summaries for the current user.
                 items:
                   $ref: '#/components/schemas/ConversationSummary'
+                minItems: 0
+                maxItems: 1000
 
   /conversations/{conversationId}:
     get:
       tags: ["conversations"]
       summary: Get a conversation and its messages
-      description: Returns full details for a single conversation, including its messages.
+      description: |
+        Returns full details for a single conversation, including its messages.
+        Viewing this conversation marks messages from other users as "read" (two checkmarks).
       operationId: getConversation
       parameters:
         - in: path
           name: conversationId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the conversation to retrieve.
       responses:
         '200':
@@ -596,7 +778,7 @@ paths:
           name: conversationId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the conversation that should receive the message.
       requestBody:
         required: true
@@ -629,13 +811,13 @@ paths:
           name: conversationId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the conversation the message belongs to.
         - in: path
           name: messageId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the message to delete.
       responses:
         '204':
@@ -664,13 +846,13 @@ paths:
           name: conversationId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the conversation the original message belongs to.
         - in: path
           name: messageId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the message to forward.
       requestBody:
         required: true
@@ -703,13 +885,13 @@ paths:
           name: conversationId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the conversation the message belongs to.
         - in: path
           name: messageId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the message to react to.
       requestBody:
         required: true
@@ -742,19 +924,19 @@ paths:
           name: conversationId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the conversation the message belongs to.
         - in: path
           name: messageId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the message the reaction is attached to.
         - in: path
           name: commentId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the reaction to remove.
       responses:
         '204':
@@ -771,10 +953,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
-  ############
   # Groups   #
-  ############
   /groups:
     post:
       tags: ["groups"]
@@ -806,7 +985,7 @@ paths:
           name: groupId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the group to retrieve.
       responses:
         '200':
@@ -836,7 +1015,7 @@ paths:
           name: groupId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the group to update.
       requestBody:
         required: true
@@ -869,7 +1048,7 @@ paths:
           name: groupId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the group to leave.
       responses:
         '204':
@@ -892,7 +1071,7 @@ paths:
           name: groupId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the group to rename.
       requestBody:
         required: true
@@ -925,7 +1104,7 @@ paths:
           name: groupId
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/Identifier'
           description: Id of the group to update.
       requestBody:
         required: true
@@ -933,11 +1112,14 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              description: Multipart form containing the photo file.
               properties:
                 photo:
                   type: string
                   format: binary
                   description: Image file to be used as the new group photo.
+              required:
+                - photo
       responses:
         '200':
           description: Group photo updated successfully.

@@ -1,4 +1,35 @@
-1.Cd to doc
-2.Run:
-    python -m http.server 8080
-3.Go to http://localhost:8080/index.html
+# WASAText Development Setup
+==========================================
+
+## 1. Start Backend Server (Go API - Port 3000)
+# From project root (wasa-project/)
+go run ./cmd/webapi --config-path ./demo/config.yml
+
+## 2. Start Frontend Server (Vue.js - Port 5173)
+# From project root (wasa-project/)
+cd webui
+yarn dev
+
+## 3. Open App
+http://localhost:5173/
+
+==========================================
+# Useful Commands
+==========================================
+
+## Flush Database (fresh start)
+# From project root
+Remove-Item ./wasatext.db -ErrorAction SilentlyContinue; go run ./cmd/webapi --config-path ./demo/config.yml
+
+## Kill process on port 3000 (if server already running)
+Get-Process -Id (Get-NetTCPConnection -LocalPort 3000).OwningProcess | Stop-Process -Force
+
+## View API Docs (Swagger UI)
+# From project root
+cd doc
+python -m http.server 8080
+# Then go to http://localhost:8080/index.html
+
+## Run Tests
+# From project root
+go test ./...
