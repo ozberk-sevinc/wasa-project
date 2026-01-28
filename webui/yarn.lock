@@ -1402,18 +1402,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"teapot@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "teapot@workspace:."
-  dependencies:
-    "@vitejs/plugin-vue": "npm:^3.0.1"
-    axios: "npm:0.28.0"
-    vite: "npm:^3.0.4"
-    vue: "npm:^3.2.37"
-    vue-router: "npm:^4.1.3"
-  languageName: unknown
-  linkType: soft
-
 "to-fast-properties@npm:^2.0.0":
   version: 2.0.0
   resolution: "to-fast-properties@npm:2.0.0"
@@ -1505,6 +1493,18 @@ __metadata:
   checksum: 10/ccdcba620b01fd2ed066fd20aec14c1a74c5cc2b8215f1334975c0a336564c4914940e0ae22d91e91256f3c3aa604172f1667cdd5c7ef48b5d15a7d4103a1ae9
   languageName: node
   linkType: hard
+
+"wasatext@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "wasatext@workspace:."
+  dependencies:
+    "@vitejs/plugin-vue": "npm:^3.0.1"
+    axios: "npm:0.28.0"
+    vite: "npm:^3.0.4"
+    vue: "npm:^3.2.37"
+    vue-router: "npm:^4.1.3"
+  languageName: unknown
+  linkType: soft
 
 "which@npm:^2.0.1":
   version: 2.0.2

@@ -1,6 +1,6 @@
 {
-	"name": "teapot",
-	"version": "0.0.0",
+	"name": "wasatext",
+	"version": "1.0.0",
 	"scripts": {
 		"dev": "yarn install --immutable --immutable-cache && vite",
 		"build-dev": "yarn install --immutable --immutable-cache && vite build --mode development",

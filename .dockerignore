@@ -1,0 +1,26 @@
+# Binaries
+webapi.exe
+webapi
+
+# Test databases
+*.db
+*.db-shm
+*.db-wal
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Data directory
+data/
+
+# Frontend build
+webui/dist/
+webui/node_modules/
