@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"os"
 
 	"github.com/gofrs/uuid"
 	"github.com/julienschmidt/httprouter"
@@ -1226,8 +1228,29 @@ func (rt *_router) setMyPhoto(w http.ResponseWriter, r *http.Request, ps httprou
 	}
 	defer file.Close()
 
-	// In a real app, you'd save the file to storage (S3, local disk, etc.)
-	// For now, we'll just store a placeholder URL
+	// Save file to uploads directory
+	uploadDir := "./uploads/users/" + user.ID
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		ctx.Logger.WithError(err).Error("error creating upload directory")
+		sendInternalError(w, "Error saving photo")
+		return
+	}
+
+	filePath := uploadDir + "/" + header.Filename
+	dst, err := os.Create(filePath)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("error creating file")
+		sendInternalError(w, "Error saving photo")
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		ctx.Logger.WithError(err).Error("error saving file")
+		sendInternalError(w, "Error saving photo")
+		return
+	}
+
 	photoURL := "/uploads/users/" + user.ID + "/" + header.Filename
 
 	if err := rt.db.UpdateUserPhoto(user.ID, &photoURL); err != nil {
@@ -1279,7 +1302,29 @@ func (rt *_router) setGroupPhoto(w http.ResponseWriter, r *http.Request, ps http
 	}
 	defer file.Close()
 
-	// Placeholder URL
+	// Save file to uploads directory
+	uploadDir := "./uploads/groups/" + groupID
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		ctx.Logger.WithError(err).Error("error creating upload directory")
+		sendInternalError(w, "Error saving photo")
+		return
+	}
+
+	filePath := uploadDir + "/" + header.Filename
+	dst, err := os.Create(filePath)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("error creating file")
+		sendInternalError(w, "Error saving photo")
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		ctx.Logger.WithError(err).Error("error saving file")
+		sendInternalError(w, "Error saving photo")
+		return
+	}
+
 	photoURL := "/uploads/groups/" + groupID + "/" + header.Filename
 
 	if err := rt.db.UpdateConversationPhoto(groupID, &photoURL); err != nil {

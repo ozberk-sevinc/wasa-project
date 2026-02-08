@@ -50,5 +50,8 @@ func (rt *_router) Handler() http.Handler {
 	// ========================================
 	rt.router.GET("/liveness", rt.liveness)
 
+	// Serve uploaded files
+	rt.router.ServeFiles("/uploads/*filepath", http.Dir("./uploads"))
+
 	return rt.router
 }

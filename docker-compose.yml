@@ -8,6 +8,7 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/data
+      - ./uploads:/root/uploads
     environment:
       - CGO_ENABLED=1
     networks:

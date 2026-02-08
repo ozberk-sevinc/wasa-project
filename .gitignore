@@ -21,6 +21,9 @@ docker-compose.log
 *.sqlite3
 data/
 
+# Uploaded files
+uploads/
+
 # Build artifacts
 wasatext-backend.tar
 wasatext-frontend.tar
