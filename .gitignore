@@ -14,3 +14,14 @@ docker-compose.log
 
 .vscode/*
 !.vscode/extensions.json
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Build artifacts
+wasatext-backend.tar
+wasatext-frontend.tar
+*.tar

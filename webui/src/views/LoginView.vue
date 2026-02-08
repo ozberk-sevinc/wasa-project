@@ -62,7 +62,8 @@ export default {
 	<div class="login-container">
 		<div class="login-card">
 			<div class="login-header">
-				<h1>💬 WASAText</h1>
+				<img src="/logo.png" alt="WASAText Logo" class="login-logo" />
+				<h1>WASAText</h1>
 				<p class="text-muted">Enter your username to start chatting</p>
 			</div>
 
@@ -111,18 +112,18 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: #1e272e;
+	background: #1a1d29;
 	padding: 16px;
 }
 
 .login-card {
-	background: #2d3436;
+	background: #252435;
 	border-radius: 8px;
 	padding: 32px 24px;
 	width: 100%;
 	max-width: 360px;
 	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-	border: 1px solid #3d4852;
+	border: 1px solid #3d3a52;
 }
 
 .login-header {
@@ -130,57 +131,66 @@ export default {
 	margin-bottom: 24px;
 }
 
+.login-logo {
+	width: 120px;
+	height: 120px;
+	margin: 0 auto 16px;
+	display: block;
+	border-radius: 20px;
+	object-fit: contain;
+}
+
 .login-header h1 {
 	font-size: 1.8rem;
 	margin-bottom: 8px;
-	color: #dfe6e9;
+	color: #e2e8f0;
 	font-weight: 600;
 }
 
 .login-header .text-muted {
-	color: #636e72 !important;
+	color: #64748b !important;
 	font-size: 0.9rem;
 }
 
 .login-form .form-label {
-	color: #b2bec3;
+	color: #cbd5e1;
 	font-size: 0.85rem;
 }
 
 .login-form .form-control {
 	border-radius: 6px;
 	padding: 12px 14px;
-	background: #1e272e;
-	border: 1px solid #3d4852;
-	color: #dfe6e9;
+	background: #1a1d29;
+	border: 1px solid #3d3a52;
+	color: #e2e8f0;
 	font-size: 1rem;
 }
 
 .login-form .form-control:focus {
-	border-color: #00b894;
-	box-shadow: 0 0 0 2px rgba(0, 184, 148, 0.2);
-	background: #1e272e;
-	color: #dfe6e9;
+	border-color: #8b5cf6;
+	box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+	background: #1a1d29;
+	color: #e2e8f0;
 }
 
 .login-form .form-control::placeholder {
-	color: #636e72;
+	color: #64748b;
 }
 
 .login-form .btn-primary {
 	border-radius: 6px;
 	padding: 12px;
 	font-weight: 500;
-	background: #00b894;
+	background: #8b5cf6;
 	border: none;
 }
 
 .login-form .btn-primary:hover {
-	background: #00a085;
+	background: #7c3aed;
 }
 
 .login-form .btn-primary:disabled {
-	background: #636e72;
+	background: #64748b;
 }
 
 .alert-danger {

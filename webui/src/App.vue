@@ -24,10 +24,10 @@ export default {
 
 body {
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-	background: #1e272e;
+	background: #1a1d29;
 	min-height: 100vh;
 	min-height: 100dvh;
-	color: #dfe6e9;
+	color: #e2e8f0;
 }
 
 #app {
@@ -51,15 +51,15 @@ input, button {
 }
 
 ::-webkit-scrollbar-track {
-	background: #1e272e;
+	background: #1a1d29;
 }
 
 ::-webkit-scrollbar-thumb {
-	background: #3d4852;
+	background: #3d3a52;
 	border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: #4a5568;
+	background: #6366f1;
 }
 </style>

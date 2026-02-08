@@ -133,25 +133,42 @@ components:
       description: A WASAText user. Usernames are unique in the whole system.
       properties:
         id:
+          type: string
           description: Internal identifier of the user.
-          allOf:
-            - $ref: '#/components/schemas/Identifier'
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
         name:
+          type: string
           description: Unique username chosen by the user.
-          allOf:
-            - $ref: '#/components/schemas/Username'
+          pattern: '^[a-zA-Z0-9_]{3,16}$'
+          minLength: 3
+          maxLength: 16
+          example: "Ozberk"
         displayName:
-          description: Optional friendly name shown in the UI instead of the username.
-          allOf:
-            - $ref: '#/components/schemas/DisplayName'
+          type: string
+          description: Optional friendly display name.
+          pattern: '^.{0,50}$'
+          minLength: 0
+          maxLength: 50
+          example: "Özberk Sevinç"
         photoUrl:
+          type: string
+          format: uri
           description: URL of the user's profile picture, if set.
-          allOf:
-            - $ref: '#/components/schemas/UrlString'
+          pattern: '^https?://.*$'
+          minLength: 1
+          maxLength: 2048
+          example: "https://example.com/photo.jpg"
         lastSeenAt:
+          type: string
+          format: date-time
           description: ISO 8601 timestamp of when the user was last active. Null if user has never logged in or is currently offline.
-          allOf:
-            - $ref: '#/components/schemas/DateTimeString'
+          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
+          minLength: 20
+          maxLength: 35
+          example: "2025-01-01T12:00:00Z"
       required:
         - id
         - name
@@ -161,9 +178,12 @@ components:
       description: A short summary of a conversation shown in the conversations list.
       properties:
         id:
+          type: string
           description: Identifier of the conversation.
-          allOf:
-            - $ref: '#/components/schemas/Identifier'
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
         type:
           type: string
           enum: [direct, group]
@@ -176,13 +196,21 @@ components:
           maxLength: 100
           example: "John Doe"
         photoUrl:
+          type: string
+          format: uri
           description: Optional conversation or group avatar.
-          allOf:
-            - $ref: '#/components/schemas/UrlString'
+          pattern: '^https?://.*$'
+          minLength: 1
+          maxLength: 2048
+          example: "https://example.com/photo.jpg"
         lastMessageAt:
+          type: string
+          format: date-time
           description: When the last message in this conversation was sent.
-          allOf:
-            - $ref: '#/components/schemas/DateTimeString'
+          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
+          minLength: 20
+          maxLength: 35
+          example: "2025-01-01T12:00:00Z"
         lastMessageSnippet:
           type: string
           description: Short preview of the last message, or a placeholder like [photo] for non-text content.
@@ -205,19 +233,29 @@ components:
       description: An emoji reaction to a message.
       properties:
         id:
+          type: string
           description: Identifier of the reaction.
-          allOf:
-            - $ref: '#/components/schemas/Identifier'
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
         emoji:
+          type: string
           description: The emoji used for the reaction.
-          allOf:
-            - $ref: '#/components/schemas/Emoji'
+          pattern: '^.{1,10}$'
+          minLength: 1
+          maxLength: 10
+          example: "👍"
         user:
           $ref: '#/components/schemas/User'
         createdAt:
+          type: string
+          format: date-time
           description: When this reaction was added.
-          allOf:
-            - $ref: '#/components/schemas/DateTimeString'
+          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
+          minLength: 20
+          maxLength: 35
+          example: "2025-01-01T12:00:00Z"
       required:
         - id
         - emoji
@@ -229,35 +267,55 @@ components:
       description: A single message inside a conversation.
       properties:
         id:
+          type: string
           description: Identifier of the message.
-          allOf:
-            - $ref: '#/components/schemas/Identifier'
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
         conversationId:
+          type: string
           description: Identifier of the conversation this message belongs to.
-          allOf:
-            - $ref: '#/components/schemas/Identifier'
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
         sender:
           $ref: '#/components/schemas/User'
         createdAt:
+          type: string
+          format: date-time
           description: When the message was sent.
-          allOf:
-            - $ref: '#/components/schemas/DateTimeString'
+          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
+          minLength: 20
+          maxLength: 35
+          example: "2025-01-01T12:00:00Z"
         contentType:
           type: string
           enum: [text, photo]
           description: Type of the message content.
         text:
+          type: string
           description: The text of the message, if contentType is text.
-          allOf:
-            - $ref: '#/components/schemas/MessageText'
+          pattern: '^[\s\S]{1,4096}$'
+          minLength: 1
+          maxLength: 4096
+          example: "Hello, world!"
         photoUrl:
+          type: string
+          format: uri
           description: URL of the photo, if contentType is photo.
-          allOf:
-            - $ref: '#/components/schemas/UrlString'
+          pattern: '^https?://.*$'
+          minLength: 1
+          maxLength: 2048
+          example: "https://example.com/photo.jpg"
         repliedToMessageId:
+          type: string
           description: If this is a reply, the id of the message being replied to.
-          allOf:
-            - $ref: '#/components/schemas/Identifier'
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
         status:
           type: string
           enum: [sent, received, read]
@@ -287,9 +345,12 @@ components:
       description: A full conversation, including all participants and messages.
       properties:
         id:
+          type: string
           description: Identifier of the conversation.
-          allOf:
-            - $ref: '#/components/schemas/Identifier'
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
         type:
           type: string
           enum: [direct, group]
@@ -302,9 +363,13 @@ components:
           maxLength: 100
           example: "Chat Group"
         photoUrl:
+          type: string
+          format: uri
           description: Optional conversation or group avatar.
-          allOf:
-            - $ref: '#/components/schemas/UrlString'
+          pattern: '^https?://.*$'
+          minLength: 1
+          maxLength: 2048
+          example: "https://example.com/photo.jpg"
         participants:
           type: array
           description: Users that are part of this conversation.
@@ -331,9 +396,12 @@ components:
       description: A group chat and its members.
       properties:
         id:
+          type: string
           description: Identifier of the group.
-          allOf:
-            - $ref: '#/components/schemas/Identifier'
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
         name:
           type: string
           description: Visible name of the group.
@@ -342,13 +410,20 @@ components:
           maxLength: 100
           example: "Work Team"
         photoUrl:
+          type: string
+          format: uri
           description: Optional group avatar.
-          allOf:
-            - $ref: '#/components/schemas/UrlString'
+          pattern: '^https?://.*$'
+          minLength: 1
+          maxLength: 2048
+          example: "https://example.com/photo.jpg"
         createdBy:
+          type: string
           description: User ID of the group creator/admin who can manage group settings.
-          allOf:
-            - $ref: '#/components/schemas/Identifier'
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
         members:
           type: array
           description: Users who are currently members of this group.
@@ -374,17 +449,27 @@ components:
           enum: [text, photo]
           description: Whether this is a text message or a photo message.
         text:
+          type: string
           description: Text content of the message when contentType is text.
-          allOf:
-            - $ref: '#/components/schemas/MessageText'
+          pattern: '^[\s\S]{1,4096}$'
+          minLength: 1
+          maxLength: 4096
+          example: "Hello, world!"
         photoUrl:
+          type: string
+          format: uri
           description: URL of the photo when contentType is photo.
-          allOf:
-            - $ref: '#/components/schemas/UrlString'
+          pattern: '^https?://.*$'
+          minLength: 1
+          maxLength: 2048
+          example: "https://example.com/photo.jpg"
         replyToMessageId:
+          type: string
           description: Optional id of another message that this one replies to.
-          allOf:
-            - $ref: '#/components/schemas/Identifier'
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
       required:
         - contentType
 
@@ -393,9 +478,12 @@ components:
       description: Body used when reacting to a message with an emoji.
       properties:
         emoji:
+          type: string
           description: Emoji used as the reaction.
-          allOf:
-            - $ref: '#/components/schemas/Emoji'
+          pattern: '^.{1,10}$'
+          minLength: 1
+          maxLength: 10
+          example: "👍"
       required:
         - emoji
 
@@ -404,9 +492,12 @@ components:
       description: Body used when forwarding a message to another conversation.
       properties:
         targetConversationId:
+          type: string
           description: Id of the conversation that should receive the forwarded message.
-          allOf:
-            - $ref: '#/components/schemas/Identifier'
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
       required:
         - targetConversationId
 
@@ -415,9 +506,12 @@ components:
       description: Body used when starting a new direct conversation with another user.
       properties:
         userId:
+          type: string
           description: Id of the user to start a conversation with.
-          allOf:
-            - $ref: '#/components/schemas/Identifier'
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
       required:
         - userId
 
@@ -447,9 +541,12 @@ components:
       description: Body used when adding a user to an existing group.
       properties:
         userId:
+          type: string
           description: Id of the user to add to the group.
-          allOf:
-            - $ref: '#/components/schemas/Identifier'
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
       required:
         - userId
 
@@ -472,9 +569,12 @@ components:
       description: Body used when changing the current user's username.
       properties:
         name:
+          type: string
           description: New username; must be globally unique.
-          allOf:
-            - $ref: '#/components/schemas/Username'
+          pattern: '^[a-zA-Z0-9_]{3,16}$'
+          minLength: 3
+          maxLength: 16
+          example: "Ozberk"
       required:
         - name
 
@@ -497,9 +597,12 @@ components:
       description: Body used when logging in or registering with a username.
       properties:
         name:
+          type: string
           description: Username for login or registration.
-          allOf:
-            - $ref: '#/components/schemas/Username'
+          pattern: '^[a-zA-Z0-9_]{3,16}$'
+          minLength: 3
+          maxLength: 16
+          example: "Ozberk"
       required:
         - name
 
@@ -508,9 +611,12 @@ components:
       description: Response returned after successful login.
       properties:
         identifier:
+          type: string
           description: Opaque identifier to be used as a Bearer token.
-          allOf:
-            - $ref: '#/components/schemas/Identifier'
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
       required:
         - identifier
 

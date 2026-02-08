@@ -1,8 +1,12 @@
 <script>
 import { conversationAPI, messageAPI } from "@/services/api.js";
+import GroupInfoPanel from "@/components/GroupInfoPanel.vue";
 
 export default {
 	name: "ChatView",
+	components: {
+		GroupInfoPanel,
+	},
 	data() {
 		return {
 			conversation: null,
@@ -14,8 +18,23 @@ export default {
 			sending: false,
 			replyingTo: null,
 			showEmojiPicker: null,
+			showInputEmojiPicker: false,
 			showAttachMenu: false,
 			commonEmojis: ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "✅"],
+			inputEmojis: [
+				"😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂",
+				"😊", "😇", "🙂", "😉", "😍", "🥰", "😘", "😋",
+				"😎", "🤓", "🧐", "😏", "😢", "😭", "😤", "😡",
+				"🤔", "🤨", "😐", "😑", "😴", "😮", "😲", "😱",
+				"👍", "👎", "👏", "🙌", "🤝", "✌️", "🤞", "🤟",
+				"❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍",
+				"💯", "🔥", "✨", "⭐", "🌟", "💫", "✅", "❌",
+				"🎉", "🎊", "🎈", "🎁", "🎂", "🎵", "🎶", "🎮"
+			],
+			showGroupInfo: false,
+			showForwardDialog: false,
+			forwardingMessage: null,
+			conversations: [],
 		};
 	},
 	computed: {
@@ -73,6 +92,27 @@ export default {
 		// Attachment methods
 		toggleAttachMenu() {
 			this.showAttachMenu = !this.showAttachMenu;
+			this.showInputEmojiPicker = false;
+		},
+
+		toggleInputEmojiPicker() {
+			this.showInputEmojiPicker = !this.showInputEmojiPicker;
+			this.showAttachMenu = false;
+		},
+
+		insertEmoji(emoji) {
+			const input = this.$refs.messageInput;
+			const startPos = input.selectionStart;
+			const endPos = input.selectionEnd;
+			const textBefore = this.newMessage.substring(0, startPos);
+			const textAfter = this.newMessage.substring(endPos);
+			this.newMessage = textBefore + emoji + textAfter;
+			this.$nextTick(() => {
+				const newPos = startPos + emoji.length;
+				input.focus();
+				input.setSelectionRange(newPos, newPos);
+			});
+			this.showInputEmojiPicker = false;
 		},
 
 		triggerFileInput(type) {
@@ -277,6 +317,60 @@ export default {
 		goBack() {
 			this.$router.push("/");
 		},
+
+		openGroupInfo() {
+			if (this.conversation?.type === "group") {
+				this.showGroupInfo = true;
+			}
+		},
+
+		handleGroupUpdated(updatedGroup) {
+			if (this.conversation) {
+				this.conversation.title = updatedGroup.name;
+				this.conversation.photoUrl = updatedGroup.photoUrl;
+			}
+		},
+
+		handleLeftGroup() {
+			this.$router.push("/");
+		},
+
+		openForwardDialog(message) {
+			this.forwardingMessage = message;
+			this.showForwardDialog = true;
+			this.loadConversations();
+		},
+
+		async loadConversations() {
+			try {
+				const response = await conversationAPI.getAll();
+				this.conversations = response.data || [];
+			} catch (e) {
+				console.error("Failed to load conversations:", e);
+			}
+		},
+
+		async forwardMessage(targetConversationId) {
+			if (!this.forwardingMessage) return;
+
+			try {
+				await messageAPI.forward(
+					this.conversationId,
+					this.forwardingMessage.id,
+					targetConversationId
+				);
+				alert("Message forwarded successfully!");
+				this.showForwardDialog = false;
+				this.forwardingMessage = null;
+			} catch (e) {
+				alert(e.response?.data?.message || "Failed to forward message");
+			}
+		},
+
+		cancelForward() {
+			this.showForwardDialog = false;
+			this.forwardingMessage = null;
+		},
 	},
 	mounted() {
 		const userData = localStorage.getItem("wasatext_user");
@@ -300,7 +394,13 @@ export default {
 			<button class="btn-back" @click="goBack">
 				← Back
 			</button>
-			<div class="chat-info" v-if="conversation">
+			<div 
+				class="chat-info" 
+				v-if="conversation"
+				:class="{ 'clickable': conversation.type === 'group' }"
+				@click="openGroupInfo"
+				:title="conversation.type === 'group' ? 'Click for group info' : ''"
+			>
 				<div class="avatar-placeholder small">
 					{{ getInitials(conversation.title) }}
 				</div>
@@ -429,6 +529,7 @@ export default {
 					<div class="message-actions">
 						<button @click="setReply(message)" title="Reply">↩️</button>
 						<button @click="showEmojiPicker = message.id" title="React">😊</button>
+						<button @click="openForwardDialog(message)" title="Forward">↪️</button>
 						<button
 							v-if="isOwnMessage(message)"
 							@click="deleteMessage(message.id)"
@@ -499,6 +600,22 @@ export default {
 					<button @click="sendPhotoUrl()">🔗 URL</button>
 				</div>
 			</div>
+			<!-- Emoji button -->
+			<div class="emoji-wrapper">
+				<button class="btn-emoji" @click="toggleInputEmojiPicker" type="button">
+					😊
+				</button>
+				<div v-if="showInputEmojiPicker" class="input-emoji-picker">
+					<button
+						v-for="emoji in inputEmojis"
+						:key="emoji"
+						@click="insertEmoji(emoji)"
+						type="button"
+					>
+						{{ emoji }}
+					</button>
+				</div>
+			</div>
 			<input
 				ref="messageInput"
 				type="text"
@@ -516,6 +633,56 @@ export default {
 				<span v-if="sending" class="spinner-border spinner-border-sm"></span>
 				<span v-else>Send</span>
 			</button>
+
+		<!-- Group Info Panel -->
+		<GroupInfoPanel
+			v-if="conversation?.type === 'group'"
+			:show="showGroupInfo"
+			:group-id="conversationId"
+			:current-user-id="currentUser?.id"
+			@close="showGroupInfo = false"
+			@group-updated="handleGroupUpdated"
+			@left-group="handleLeftGroup"
+		/>
+
+		<!-- Forward Message Dialog -->
+		<div v-if="showForwardDialog" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5)">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title">Forward Message</h5>
+						<button type="button" class="btn-close" @click="cancelForward"></button>
+					</div>
+					<div class="modal-body">
+						<p class="text-muted mb-3">Select a conversation to forward this message to:</p>
+						<div class="list-group">
+							<button
+								v-for="conv in conversations"
+								:key="conv.id"
+								class="list-group-item list-group-item-action d-flex align-items-center"
+								@click="forwardMessage(conv.id)"
+								:disabled="conv.id === conversationId"
+							>
+								<div class="avatar-placeholder small me-3">
+									{{ getInitials(conv.title) }}
+								</div>
+								<div class="flex-grow-1">
+									<div class="fw-bold">{{ conv.title }}</div>
+									<small class="text-muted">{{ conv.type === 'group' ? 'Group' : 'Direct' }}</small>
+								</div>
+								<span v-if="conv.id === conversationId" class="badge bg-secondary">Current</span>
+							</button>
+						</div>
+						<div v-if="conversations.length === 0" class="text-center text-muted py-3">
+							No other conversations available
+						</div>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" @click="cancelForward">Cancel</button>
+					</div>
+				</div>
+			</div>
+		</div>
 		</div>
 	</div>
 </template>
@@ -526,24 +693,24 @@ export default {
 	height: 100dvh;
 	display: flex;
 	flex-direction: column;
-	background: #1e272e;
+	background: #1a1d29;
 }
 
 .chat-header {
-	background: #2d3436;
-	color: #dfe6e9;
+	background: #252435;
+	color: #e2e8f0;
 	padding: 10px 12px;
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	border-bottom: 1px solid #3d4852;
+	border-bottom: 1px solid #3d3a52;
 	flex-shrink: 0;
 }
 
 .btn-back {
 	background: none;
 	border: none;
-	color: #b2bec3;
+	color: #cbd5e1;
 	font-size: 0.95rem;
 	cursor: pointer;
 	padding: 6px 10px;
@@ -551,8 +718,8 @@ export default {
 }
 
 .btn-back:hover {
-	background: #3d4852;
-	color: #dfe6e9;
+	background: #3d3a52;
+	color: #e2e8f0;
 }
 
 .chat-info {
@@ -563,12 +730,24 @@ export default {
 	min-width: 0;
 }
 
+.chat-info.clickable {
+	cursor: pointer;
+	border-radius: 8px;
+	padding: 4px 8px;
+	margin: -4px -8px;
+	transition: background 0.2s;
+}
+
+.chat-info.clickable:hover {
+	background: rgba(255, 255, 255, 0.1);
+}
+
 .avatar-placeholder.small {
 	width: 38px;
 	height: 38px;
 	border-radius: 50%;
-	background: #00b894;
-	color: #1e272e;
+	background: #8b5cf6;
+	color: #1a1d29;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -592,12 +771,12 @@ export default {
 
 .chat-subtitle {
 	font-size: 0.75rem;
-	color: #636e72;
+	color: #64748b;
 }
 
 .chat-header .btn-light {
-	background: #3d4852;
-	color: #b2bec3;
+	background: #3d3a52;
+	color: #cbd5e1;
 	border: none;
 	padding: 6px 10px;
 }
@@ -609,11 +788,11 @@ export default {
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	color: #b2bec3;
+	color: #cbd5e1;
 }
 
 .spinner-border {
-	color: #00b894 !important;
+	color: #8b5cf6 !important;
 }
 
 .messages-container {
@@ -621,13 +800,13 @@ export default {
 	overflow-y: auto;
 	-webkit-overflow-scrolling: touch;
 	padding: 12px;
-	background: #1e272e;
+	background: #1a1d29;
 }
 
 .no-messages {
 	text-align: center;
 	padding: 32px 16px;
-	color: #636e72;
+	color: #64748b;
 }
 
 .date-separator {
@@ -636,11 +815,11 @@ export default {
 }
 
 .date-separator span {
-	background: #3d4852;
+	background: #3d3a52;
 	padding: 4px 12px;
 	border-radius: 12px;
 	font-size: 0.75rem;
-	color: #b2bec3;
+	color: #cbd5e1;
 }
 
 .message-wrapper {
@@ -649,6 +828,7 @@ export default {
 	align-items: flex-start;
 	margin-bottom: 8px;
 	position: relative;
+	width: 100%;
 }
 
 .message-wrapper.own-message {
@@ -657,23 +837,23 @@ export default {
 
 .message-bubble {
 	max-width: 80%;
-	background: #2d3436;
+	background: #252435;
 	border-radius: 12px;
 	border-top-left-radius: 4px;
 	padding: 8px 12px;
 	position: relative;
-	border: 1px solid #3d4852;
+	border: 1px solid #3d3a52;
 }
 
 .own-message .message-bubble {
-	background: #00b894;
-	border-color: #00a085;
+	background: #8b5cf6;
+	border-color: #7c3aed;
 	border-radius: 12px;
 	border-top-right-radius: 4px;
 }
 
 .own-message .message-text {
-	color: #1e272e;
+	color: #1a1d29;
 }
 
 .own-message .message-time {
@@ -691,7 +871,7 @@ export default {
 
 .reply-bar {
 	width: 3px;
-	background: #00b894;
+	background: #8b5cf6;
 	border-radius: 2px;
 	margin-right: 8px;
 	flex-shrink: 0;
@@ -703,16 +883,16 @@ export default {
 }
 
 .reply-content strong {
-	color: #00b894;
+	color: #8b5cf6;
 }
 
 .own-message .reply-content strong {
-	color: #1e272e;
+	color: #1a1d29;
 }
 
 .reply-content p {
 	margin: 0;
-	color: #b2bec3;
+	color: #cbd5e1;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -725,14 +905,14 @@ export default {
 .sender-name {
 	font-size: 0.75rem;
 	font-weight: 600;
-	color: #00b894;
+	color: #8b5cf6;
 	margin-bottom: 2px;
 }
 
 .message-text {
 	margin: 0;
 	word-wrap: break-word;
-	color: #dfe6e9;
+	color: #e2e8f0;
 	font-size: 0.95rem;
 	line-height: 1.4;
 }
@@ -753,16 +933,16 @@ export default {
 
 .message-time {
 	font-size: 0.65rem;
-	color: #636e72;
+	color: #64748b;
 }
 
 .message-status {
 	font-size: 0.75rem;
-	color: #636e72;
+	color: #64748b;
 }
 
 .message-status.status-read {
-	color: #00b894;
+	color: #8b5cf6;
 }
 
 .own-message .message-status {
@@ -770,7 +950,7 @@ export default {
 }
 
 .own-message .message-status.status-read {
-	color: #1e272e;
+	color: #1a1d29;
 }
 
 .message-reactions {
@@ -781,28 +961,51 @@ export default {
 }
 
 .reaction-badge {
-	background: rgba(0, 184, 148, 0.2);
-	padding: 2px 6px;
-	border-radius: 10px;
-	font-size: 0.85rem;
+	background: rgba(139, 92, 246, 0.2);
+	border: 1px solid rgba(139, 92, 246, 0.3);
+	padding: 3px 8px;
+	border-radius: 12px;
+	font-size: 0.9rem;
 	cursor: pointer;
+	transition: all 0.2s;
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.reaction-badge:hover {
+	background: rgba(139, 92, 246, 0.35);
+	border-color: rgba(139, 92, 246, 0.5);
+	transform: scale(1.1);
+}
+
+.own-message .reaction-badge {
+	background: rgba(26, 29, 41, 0.3);
+	border-color: rgba(26, 29, 41, 0.5);
+}
+
+.own-message .reaction-badge:hover {
+	background: rgba(26, 29, 41, 0.5);
+	border-color: rgba(26, 29, 41, 0.7);
 }
 
 .message-actions {
 	display: none;
 	position: absolute;
-	top: -4px;
-	right: -70px;
-	background: #2d3436;
+	top: 50%;
+	transform: translateY(-50%);
+	right: 8px;
+	background: #252435;
 	border-radius: 16px;
-	padding: 4px 6px;
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-	border: 1px solid #3d4852;
+	padding: 6px 8px;
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+	border: 1px solid #3d3a52;
+	z-index: 10;
 }
 
 .own-message .message-actions {
 	right: auto;
-	left: -70px;
+	left: 8px;
 }
 
 .message-wrapper:hover .message-actions {
@@ -814,28 +1017,32 @@ export default {
 	background: none;
 	border: none;
 	cursor: pointer;
-	font-size: 0.9rem;
-	padding: 4px;
-	border-radius: 4px;
+	font-size: 1.1rem;
+	padding: 6px 8px;
+	border-radius: 6px;
+	transition: all 0.2s;
 }
 
 .message-actions button:hover {
-	background: #3d4852;
+	background: #3d3a52;
+	transform: scale(1.1);
 }
 
 .emoji-picker {
 	position: absolute;
-	top: 100%;
-	margin-top: 4px;
-	background: #2d3436;
-	border-radius: 8px;
+	top: 50%;
+	transform: translateY(-50%);
+	right: 180px;
+	background: #252435;
+	border-radius: 12px;
 	padding: 8px;
-	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-	border: 1px solid #3d4852;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+	border: 1px solid #3d3a52;
 	display: flex;
 	flex-wrap: wrap;
 	gap: 4px;
-	z-index: 100;
+	z-index: 101;
+	max-width: 200px;
 }
 
 .emoji-picker button {
@@ -848,22 +1055,27 @@ export default {
 }
 
 .emoji-picker button:hover {
-	background: #3d4852;
+	background: #3d3a52;
+}
+
+.own-message .emoji-picker {
+	right: auto;
+	left: 180px;
 }
 
 .reply-preview {
-	background: #2d3436;
+	background: #252435;
 	padding: 10px 14px;
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	border-left: 3px solid #00b894;
-	border-top: 1px solid #3d4852;
+	border-left: 3px solid #8b5cf6;
+	border-top: 1px solid #3d3a52;
 	flex-shrink: 0;
 }
 
 .reply-preview-content strong {
-	color: #00b894;
+	color: #8b5cf6;
 	display: block;
 	font-size: 0.8rem;
 }
@@ -871,7 +1083,7 @@ export default {
 .reply-preview-content p {
 	margin: 0;
 	font-size: 0.8rem;
-	color: #b2bec3;
+	color: #cbd5e1;
 }
 
 .btn-cancel-reply {
@@ -879,29 +1091,31 @@ export default {
 	border: none;
 	font-size: 1.1rem;
 	cursor: pointer;
-	color: #636e72;
+	color: #64748b;
 	padding: 4px;
 }
 
 .btn-cancel-reply:hover {
-	color: #dfe6e9;
+	color: #e2e8f0;
 }
 
 .input-area {
 	padding: 10px 12px;
-	background: #2d3436;
+	background: #252435;
 	display: flex;
 	gap: 8px;
-	border-top: 1px solid #3d4852;
+	border-top: 1px solid #3d3a52;
 	flex-shrink: 0;
 	align-items: center;
 }
 
-.attach-wrapper {
+.attach-wrapper,
+.emoji-wrapper {
 	position: relative;
 }
 
-.btn-attach {
+.btn-attach,
+.btn-emoji {
 	background: none;
 	border: none;
 	font-size: 1.4rem;
@@ -911,16 +1125,17 @@ export default {
 	transition: background 0.2s;
 }
 
-.btn-attach:hover {
-	background: #3d4852;
+.btn-attach:hover,
+.btn-emoji:hover {
+	background: #3d3a52;
 }
 
 .attach-menu {
 	position: absolute;
 	bottom: 50px;
 	left: 0;
-	background: #2d3436;
-	border: 1px solid #3d4852;
+	background: #252435;
+	border: 1px solid #3d3a52;
 	border-radius: 10px;
 	padding: 6px;
 	display: flex;
@@ -934,7 +1149,7 @@ export default {
 .attach-menu button {
 	background: none;
 	border: none;
-	color: #dfe6e9;
+	color: #e2e8f0;
 	padding: 10px 14px;
 	text-align: left;
 	cursor: pointer;
@@ -944,45 +1159,79 @@ export default {
 }
 
 .attach-menu button:hover {
-	background: #3d4852;
+	background: #3d3a52;
+}
+
+.input-emoji-picker {
+	position: absolute;
+	bottom: 50px;
+	left: 0;
+	background: #252435;
+	border: 1px solid #3d3a52;
+	border-radius: 10px;
+	padding: 12px;
+	display: grid;
+	grid-template-columns: repeat(8, 1fr);
+	gap: 6px;
+	z-index: 100;
+	box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+	max-width: 320px;
+	max-height: 300px;
+	overflow-y: auto;
+}
+
+.input-emoji-picker button {
+	background: none;
+	border: none;
+	font-size: 1.5rem;
+	cursor: pointer;
+	padding: 6px;
+	border-radius: 6px;
+	transition: background 0.2s;
+	line-height: 1;
+}
+
+.input-emoji-picker button:hover {
+	background: #3d3a52;
+	transform: scale(1.2);
 }
 
 .input-area .form-control {
 	border-radius: 20px;
 	padding: 10px 16px;
-	background: #1e272e;
-	border: 1px solid #3d4852;
-	color: #dfe6e9;
+	background: #1a1d29;
+	border: 1px solid #3d3a52;
+	color: #e2e8f0;
 	flex: 1;
 }
 
 .input-area .form-control:focus {
-	border-color: #00b894;
+	border-color: #8b5cf6;
 	box-shadow: none;
 	outline: none;
 }
 
 .input-area .form-control::placeholder {
-	color: #636e72;
+	color: #64748b;
 }
 
 .btn-send {
 	border-radius: 20px;
 	padding: 10px 18px;
-	background: #00b894;
+	background: #8b5cf6;
 	border: none;
-	color: #1e272e;
+	color: #1a1d29;
 	font-weight: 500;
 	flex-shrink: 0;
 }
 
 .btn-send:hover:not(:disabled) {
-	background: #00a085;
+	background: #7c3aed;
 }
 
 .btn-send:disabled {
-	background: #3d4852;
-	color: #636e72;
+	background: #3d3a52;
+	color: #64748b;
 }
 
 /* File message styles */
@@ -1020,7 +1269,7 @@ export default {
 .file-name {
 	font-size: 0.9rem;
 	font-weight: 500;
-	color: #dfe6e9;
+	color: #e2e8f0;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -1028,7 +1277,7 @@ export default {
 
 .file-hint {
 	font-size: 0.75rem;
-	color: #b2bec3;
+	color: #cbd5e1;
 }
 
 .audio-player {

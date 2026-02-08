@@ -253,7 +253,8 @@ export default {
 		<!-- Header -->
 		<header class="conv-header">
 			<div class="header-left">
-				<h1>💬 WASAText</h1>
+				<img src="/logo.png" alt="WASAText" class="header-logo" />
+				<h1>WASAText</h1>
 			</div>
 			<div class="header-right">
 				<button class="btn btn-light btn-sm me-2" @click="$router.push('/profile')">
@@ -527,19 +528,32 @@ export default {
 	height: 100dvh;
 	display: flex;
 	flex-direction: column;
-	background: #1e272e;
+	background: #1a1d29;
 }
 
 .conv-header {
-	background: #2d3436;
-	color: #dfe6e9;
+	background: #252435;
+	color: #e2e8f0;
 	padding: 12px 16px;
 	display: flex;
 	flex-wrap: wrap;
 	justify-content: space-between;
 	align-items: center;
 	gap: 8px;
-	border-bottom: 1px solid #3d4852;
+	border-bottom: 1px solid #3d3a52;
+}
+
+.header-left {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.header-logo {
+	width: 40px;
+	height: 40px;
+	border-radius: 8px;
+	object-fit: contain;
 }
 
 .conv-header h1 {
@@ -560,52 +574,52 @@ export default {
 }
 
 .btn-light {
-	background: #3d4852;
-	color: #dfe6e9;
+	background: #3d3a52;
+	color: #e2e8f0;
 	border: none;
 }
 
 .btn-light:hover {
-	background: #4a5568;
+	background: #4d4763;
 	color: #fff;
 }
 
 .btn-outline-light {
-	color: #b2bec3;
-	border-color: #3d4852;
+	color: #cbd5e1;
+	border-color: #3d3a52;
 }
 
 .btn-outline-light:hover {
-	background: #3d4852;
-	color: #dfe6e9;
+	background: #3d3a52;
+	color: #e2e8f0;
 }
 
 .conv-toolbar {
 	padding: 12px 16px;
-	background: #2d3436;
-	border-bottom: 1px solid #3d4852;
+	background: #252435;
+	border-bottom: 1px solid #3d3a52;
 	display: flex;
 	flex-wrap: wrap;
 	gap: 8px;
 }
 
 .conv-toolbar .btn-primary {
-	background: #00b894;
+	background: #8b5cf6;
 	border: none;
 }
 
 .conv-toolbar .btn-primary:hover {
-	background: #00a085;
+	background: #7c3aed;
 }
 
 .conv-toolbar .btn-outline-secondary {
-	color: #b2bec3;
-	border-color: #3d4852;
+	color: #cbd5e1;
+	border-color: #3d3a52;
 }
 
 .conv-toolbar .btn-outline-secondary:hover {
-	background: #3d4852;
-	color: #dfe6e9;
+	background: #3d3a52;
+	color: #e2e8f0;
 }
 
 .conversation-list {
@@ -617,18 +631,18 @@ export default {
 .conversation-item {
 	display: flex;
 	padding: 14px 16px;
-	background: #2d3436;
-	border-bottom: 1px solid #3d4852;
+	background: #252435;
+	border-bottom: 1px solid #3d3a52;
 	cursor: pointer;
 	transition: background 0.15s;
 }
 
 .conversation-item:hover {
-	background: #3d4852;
+	background: #3d3a52;
 }
 
 .conversation-item:active {
-	background: #4a5568;
+	background: #4d4763;
 }
 
 .conv-avatar {
@@ -648,8 +662,8 @@ export default {
 	width: 24px;
 	height: 24px;
 	border-radius: 50%;
-	background: #00b894;
-	border: 2px solid #2d3436;
+	background: #8b5cf6;
+	border: 2px solid #252435;
 	font-size: 0.7rem;
 	cursor: pointer;
 	display: flex;
@@ -661,7 +675,7 @@ export default {
 }
 
 .avatar-edit-btn:hover {
-	background: #00a085;
+	background: #7c3aed;
 }
 
 .avatar-img img {
@@ -675,8 +689,8 @@ export default {
 	width: 48px;
 	height: 48px;
 	border-radius: 50%;
-	background: #00b894;
-	color: #1e272e;
+	background: #8b5cf6;
+	color: #1a1d29;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -719,7 +733,7 @@ export default {
 
 .conv-title {
 	font-weight: 500;
-	color: #dfe6e9;
+	color: #e2e8f0;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -727,7 +741,7 @@ export default {
 
 .conv-time {
 	font-size: 0.75rem;
-	color: #636e72;
+	color: #64748b;
 	flex-shrink: 0;
 }
 
@@ -739,7 +753,7 @@ export default {
 }
 
 .conv-preview {
-	color: #b2bec3;
+	color: #cbd5e1;
 	font-size: 0.85rem;
 	white-space: nowrap;
 	overflow: hidden;
@@ -749,10 +763,10 @@ export default {
 
 .conv-badge {
 	font-size: 0.7rem;
-	background: #3d4852;
+	background: #3d3a52;
 	padding: 2px 8px;
 	border-radius: 10px;
-	color: #b2bec3;
+	color: #cbd5e1;
 	flex-shrink: 0;
 }
 
@@ -767,12 +781,12 @@ export default {
 }
 
 .empty-state h3 {
-	color: #dfe6e9;
+	color: #e2e8f0;
 	margin-bottom: 8px;
 }
 
 .empty-state .text-muted {
-	color: #636e72 !important;
+	color: #64748b !important;
 }
 
 .empty-icon {
@@ -781,11 +795,11 @@ export default {
 }
 
 .spinner-border {
-	color: #00b894 !important;
+	color: #8b5cf6 !important;
 }
 
 .text-muted {
-	color: #636e72 !important;
+	color: #64748b !important;
 }
 
 .alert-danger {
@@ -810,7 +824,7 @@ export default {
 }
 
 .modal-content {
-	background: #2d3436;
+	background: #252435;
 	border-radius: 8px;
 	width: 100%;
 	max-width: 380px;
@@ -818,7 +832,7 @@ export default {
 	overflow: hidden;
 	display: flex;
 	flex-direction: column;
-	border: 1px solid #3d4852;
+	border: 1px solid #3d3a52;
 }
 
 .modal-content.modal-small {
@@ -832,7 +846,7 @@ export default {
 }
 
 .group-name-label {
-	color: #dfe6e9;
+	color: #e2e8f0;
 	font-weight: 600;
 	margin-bottom: 20px;
 }
@@ -843,7 +857,7 @@ export default {
 
 .modal-header {
 	padding: 14px 16px;
-	border-bottom: 1px solid #3d4852;
+	border-bottom: 1px solid #3d3a52;
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
@@ -851,7 +865,7 @@ export default {
 
 .modal-header h5 {
 	margin: 0;
-	color: #dfe6e9;
+	color: #e2e8f0;
 	font-size: 1.1rem;
 }
 
@@ -870,14 +884,14 @@ export default {
 	display: flex;
 	align-items: center;
 	padding: 12px;
-	background: #1e272e;
+	background: #1a1d29;
 	border-radius: 8px;
 	cursor: pointer;
 	transition: background 0.15s;
 }
 
 .self-chat-option:hover {
-	background: #3d4852;
+	background: #3d3a52;
 }
 
 .self-chat-text {
@@ -888,7 +902,7 @@ export default {
 }
 
 .self-chat-text strong {
-	color: #dfe6e9;
+	color: #e2e8f0;
 }
 
 .self-chat-text .text-muted {

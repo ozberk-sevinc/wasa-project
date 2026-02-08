@@ -207,19 +207,19 @@ export default {
 .profile-container {
 	min-height: 100vh;
 	min-height: 100dvh;
-	background: #1e272e;
+	background: #1a1d29;
 	display: flex;
 	flex-direction: column;
 }
 
 .profile-header {
-	background: #2d3436;
-	color: #dfe6e9;
+	background: #252435;
+	color: #e2e8f0;
 	padding: 12px 16px;
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	border-bottom: 1px solid #3d4852;
+	border-bottom: 1px solid #3d3a52;
 }
 
 .profile-header h1 {
@@ -231,7 +231,7 @@ export default {
 .btn-back {
 	background: none;
 	border: none;
-	color: #b2bec3;
+	color: #cbd5e1;
 	font-size: 0.95rem;
 	cursor: pointer;
 	padding: 6px 10px;
@@ -239,8 +239,8 @@ export default {
 }
 
 .btn-back:hover {
-	background: #3d4852;
-	color: #dfe6e9;
+	background: #3d3a52;
+	color: #e2e8f0;
 }
 
 .profile-content {
@@ -273,8 +273,8 @@ export default {
 .avatar-placeholder.large {
 	width: 100%;
 	height: 100%;
-	background: #00b894;
-	color: #1e272e;
+	background: #8b5cf6;
+	color: #1a1d29;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -288,7 +288,7 @@ export default {
 	left: 0;
 	right: 0;
 	background: rgba(0, 0, 0, 0.6);
-	color: #dfe6e9;
+	color: #e2e8f0;
 	padding: 6px;
 	text-align: center;
 	opacity: 0;
@@ -300,7 +300,7 @@ export default {
 }
 
 .text-muted {
-	color: #636e72 !important;
+	color: #64748b !important;
 }
 
 .profile-cards {
@@ -310,15 +310,15 @@ export default {
 }
 
 .profile-card {
-	background: #2d3436;
+	background: #252435;
 	border-radius: 8px;
 	padding: 14px 16px;
-	border: 1px solid #3d4852;
+	border: 1px solid #3d3a52;
 }
 
 .card-label {
 	font-size: 0.8rem;
-	color: #636e72;
+	color: #64748b;
 	margin-bottom: 6px;
 }
 
@@ -333,13 +333,13 @@ export default {
 .card-value {
 	font-size: 1rem;
 	font-weight: 500;
-	color: #dfe6e9;
+	color: #e2e8f0;
 }
 
 .card-value.id-value {
 	font-size: 0.75rem;
 	font-family: monospace;
-	color: #b2bec3;
+	color: #cbd5e1;
 	word-break: break-all;
 }
 
@@ -350,15 +350,15 @@ export default {
 }
 
 .card-edit .form-control {
-	background: #1e272e;
-	border: 1px solid #3d4852;
-	color: #dfe6e9;
+	background: #1a1d29;
+	border: 1px solid #3d3a52;
+	color: #e2e8f0;
 	border-radius: 6px;
 	padding: 10px 12px;
 }
 
 .card-edit .form-control:focus {
-	border-color: #00b894;
+	border-color: #8b5cf6;
 	box-shadow: none;
 	outline: none;
 }
@@ -377,34 +377,34 @@ export default {
 }
 
 .btn-outline-primary {
-	color: #00b894;
-	border-color: #00b894;
+	color: #8b5cf6;
+	border-color: #8b5cf6;
 }
 
 .btn-outline-primary:hover {
-	background: #00b894;
-	color: #1e272e;
+	background: #8b5cf6;
+	color: #1a1d29;
 }
 
 .btn-primary {
-	background: #00b894;
+	background: #8b5cf6;
 	border: none;
-	color: #1e272e;
+	color: #1a1d29;
 }
 
 .btn-primary:hover {
-	background: #00a085;
+	background: #7c3aed;
 }
 
 .btn-secondary {
-	background: #3d4852;
+	background: #3d3a52;
 	border: none;
-	color: #b2bec3;
+	color: #cbd5e1;
 }
 
 .btn-secondary:hover {
-	background: #4a5568;
-	color: #dfe6e9;
+	background: #4d4763;
+	color: #e2e8f0;
 }
 
 .logout-section {
@@ -425,7 +425,7 @@ export default {
 }
 
 .spinner-border {
-	color: #00b894 !important;
+	color: #8b5cf6 !important;
 }
 
 .alert-danger {
