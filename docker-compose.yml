@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile.backend
     container_name: wasatext-backend
     ports:
-      - "8080:8080"
+      - "3000:3000"
     volumes:
       - ./data:/data
       - ./uploads:/root/uploads
@@ -14,7 +14,7 @@ services:
     networks:
       - wasatext-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/liveness"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/liveness"]
       interval: 30s
       timeout: 10s
       retries: 3

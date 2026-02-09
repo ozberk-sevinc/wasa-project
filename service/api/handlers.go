@@ -87,6 +87,7 @@ type MessageResponse struct {
 	RepliedToMessageID *string            `json:"repliedToMessageId,omitempty"`
 	Status             string             `json:"status"`
 	Reactions          []ReactionResponse `json:"reactions"`
+	IsForwarded        bool               `json:"isForwarded"`
 }
 
 // ConversationResponse matches the Conversation schema (full details)
@@ -101,10 +102,11 @@ type ConversationResponse struct {
 
 // GroupResponse matches the Group schema
 type GroupResponse struct {
-	ID       string         `json:"id"`
-	Name     string         `json:"name"`
-	PhotoURL *string        `json:"photoUrl,omitempty"`
-	Members  []UserResponse `json:"members"`
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	PhotoURL  *string        `json:"photoUrl,omitempty"`
+	CreatedBy string         `json:"createdBy"`
+	Members   []UserResponse `json:"members"`
 }
 
 // ============================================================================
@@ -416,7 +418,7 @@ func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps
 		convName = "Message Yourself"
 	}
 
-	if err := rt.db.CreateConversation(convID.String(), "direct", convName); err != nil {
+	if err := rt.db.CreateConversation(convID.String(), "direct", convName, nil); err != nil {
 		ctx.Logger.WithError(err).Error("error creating conversation")
 		sendInternalError(w, "Error creating conversation")
 		return
@@ -601,6 +603,13 @@ func (rt *_router) getConversation(w http.ResponseWriter, r *http.Request, ps ht
 			reactionResponses = []ReactionResponse{}
 		}
 
+		// Calculate dynamic status based on read receipts
+		messageStatus, err := rt.db.GetMessageStatus(m.ID)
+		if err != nil {
+			ctx.Logger.WithError(err).Warn("error calculating message status, using stored status")
+			messageStatus = m.Status
+		}
+
 		messageResponses = append(messageResponses, MessageResponse{
 			ID:                 m.ID,
 			ConversationID:     m.ConversationID,
@@ -612,8 +621,9 @@ func (rt *_router) getConversation(w http.ResponseWriter, r *http.Request, ps ht
 			FileURL:            m.FileURL,
 			FileName:           m.FileName,
 			RepliedToMessageID: m.RepliedToMessageID,
-			Status:             m.Status,
+			Status:             messageStatus,
 			Reactions:          reactionResponses,
+			IsForwarded:        m.IsForwarded,
 		})
 	}
 
@@ -677,9 +687,9 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		return
 	}
 
-	// Validate content
-	if req.ContentType == "text" && (req.Text == nil || *req.Text == "") {
-		sendBadRequest(w, "text is required for text messages")
+	// Validate content - text and photo can co-exist
+	if req.ContentType == "text" && (req.Text == nil || *req.Text == "") && (req.PhotoURL == nil || *req.PhotoURL == "") {
+		sendBadRequest(w, "text or photoUrl is required for text messages")
 		return
 	}
 	if req.ContentType == "photo" && (req.PhotoURL == nil || *req.PhotoURL == "") {
@@ -707,6 +717,7 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		FileName:           req.FileName,
 		RepliedToMessageID: req.ReplyToMessageID,
 		Status:             "sent",
+		IsForwarded:        false,
 	}
 
 	if err := rt.db.CreateMessage(msg); err != nil {
@@ -733,6 +744,7 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		RepliedToMessageID: msg.RepliedToMessageID,
 		Status:             msg.Status,
 		Reactions:          []ReactionResponse{},
+		IsForwarded:        msg.IsForwarded,
 	})
 }
 
@@ -824,7 +836,10 @@ func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps htt
 		ContentType:    origMsg.ContentType,
 		Text:           origMsg.Text,
 		PhotoURL:       origMsg.PhotoURL,
+		FileURL:        origMsg.FileURL,
+		FileName:       origMsg.FileName,
 		Status:         "sent",
+		IsForwarded:    true,
 	}
 
 	if err := rt.db.CreateMessage(newMsg); err != nil {
@@ -846,8 +861,11 @@ func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps htt
 		ContentType: newMsg.ContentType,
 		Text:        newMsg.Text,
 		PhotoURL:    newMsg.PhotoURL,
+		FileURL:     newMsg.FileURL,
+		FileName:    newMsg.FileName,
 		Status:      newMsg.Status,
 		Reactions:   []ReactionResponse{},
+		IsForwarded: newMsg.IsForwarded,
 	})
 }
 
@@ -972,7 +990,7 @@ func (rt *_router) createGroup(w http.ResponseWriter, r *http.Request, ps httpro
 	groupID, _ := uuid.NewV4()
 
 	// Create the group conversation
-	if err := rt.db.CreateConversation(groupID.String(), "group", req.Name); err != nil {
+	if err := rt.db.CreateConversation(groupID.String(), "group", req.Name, &user.ID); err != nil {
 		ctx.Logger.WithError(err).Error("error creating group")
 		sendInternalError(w, "Error creating group")
 		return
@@ -1003,9 +1021,10 @@ func (rt *_router) createGroup(w http.ResponseWriter, r *http.Request, ps httpro
 	}
 
 	sendJSON(w, http.StatusCreated, GroupResponse{
-		ID:      groupID.String(),
-		Name:    req.Name,
-		Members: memberResponses,
+		ID:        groupID.String(),
+		Name:      req.Name,
+		CreatedBy: user.ID,
+		Members:   memberResponses,
 	})
 }
 
@@ -1048,11 +1067,18 @@ func (rt *_router) getGroup(w http.ResponseWriter, r *http.Request, ps httproute
 		})
 	}
 
+	// Get createdBy value, handling nil case
+	var createdBy string
+	if conv.CreatedBy != nil {
+		createdBy = *conv.CreatedBy
+	}
+
 	sendJSON(w, http.StatusOK, GroupResponse{
-		ID:       conv.ID,
-		Name:     conv.Name,
-		PhotoURL: conv.PhotoURL,
-		Members:  memberResponses,
+		ID:        conv.ID,
+		Name:      conv.Name,
+		PhotoURL:  conv.PhotoURL,
+		CreatedBy: createdBy,
+		Members:   memberResponses,
 	})
 }
 
@@ -1110,11 +1136,18 @@ func (rt *_router) addToGroup(w http.ResponseWriter, r *http.Request, ps httprou
 		})
 	}
 
+	// Get createdBy value, handling nil case
+	var createdBy string
+	if conv.CreatedBy != nil {
+		createdBy = *conv.CreatedBy
+	}
+
 	sendJSON(w, http.StatusOK, GroupResponse{
-		ID:       conv.ID,
-		Name:     conv.Name,
-		PhotoURL: conv.PhotoURL,
-		Members:  memberResponses,
+		ID:        conv.ID,
+		Name:      conv.Name,
+		PhotoURL:  conv.PhotoURL,
+		CreatedBy: createdBy,
+		Members:   memberResponses,
 	})
 }
 
@@ -1195,17 +1228,93 @@ func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httpr
 		})
 	}
 
+	// Get createdBy value, handling nil case
+	var createdBy string
+	if conv.CreatedBy != nil {
+		createdBy = *conv.CreatedBy
+	}
+
 	sendJSON(w, http.StatusOK, GroupResponse{
-		ID:       conv.ID,
-		Name:     conv.Name,
-		PhotoURL: conv.PhotoURL,
-		Members:  memberResponses,
+		ID:        conv.ID,
+		Name:      conv.Name,
+		PhotoURL:  conv.PhotoURL,
+		CreatedBy: createdBy,
+		Members:   memberResponses,
 	})
 }
 
 // ============================================================================
 // PHOTO UPLOAD ENDPOINTS
 // ============================================================================
+
+// uploadMessagePhoto handles POST /conversations/{conversationId}/photos - upload photo for message
+func (rt *_router) uploadMessagePhoto(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+	user := GetUserFromContext(r.Context())
+	if user == nil {
+		sendUnauthorized(w, "User not found in context")
+		return
+	}
+
+	conversationID := ps.ByName("conversationId")
+
+	// Check if user is participant
+	isParticipant, err := rt.db.IsParticipant(conversationID, user.ID)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("database error")
+		sendInternalError(w, "Database error")
+		return
+	}
+	if !isParticipant {
+		sendNotFound(w, "Conversation not found or you are not a participant")
+		return
+	}
+
+	// Parse multipart form (max 10MB)
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		sendBadRequest(w, "Invalid multipart form or file too large")
+		return
+	}
+
+	file, header, err := r.FormFile("photo")
+	if err != nil {
+		sendBadRequest(w, "photo file is required")
+		return
+	}
+	defer file.Close()
+
+	// Save file to uploads directory
+	uploadDir := "./uploads/messages/" + conversationID
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		ctx.Logger.WithError(err).Error("error creating upload directory")
+		sendInternalError(w, "Error saving photo")
+		return
+	}
+
+	// Generate unique filename to avoid conflicts
+	fileID, _ := uuid.NewV4()
+	fileName := fileID.String() + "_" + header.Filename
+	filePath := uploadDir + "/" + fileName
+
+	dst, err := os.Create(filePath)
+	if err != nil {
+		ctx.Logger.WithError(err).Error("error creating file")
+		sendInternalError(w, "Error saving photo")
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		ctx.Logger.WithError(err).Error("error saving file")
+		sendInternalError(w, "Error saving photo")
+		return
+	}
+
+	photoURL := "/uploads/messages/" + conversationID + "/" + fileName
+
+	sendJSON(w, http.StatusOK, map[string]string{
+		"photoUrl": photoURL,
+	})
+}
 
 // setMyPhoto handles PUT /me/photo - upload profile photo
 func (rt *_router) setMyPhoto(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
@@ -1345,10 +1454,17 @@ func (rt *_router) setGroupPhoto(w http.ResponseWriter, r *http.Request, ps http
 		})
 	}
 
+	// Get createdBy value, handling nil case
+	var createdBy string
+	if conv.CreatedBy != nil {
+		createdBy = *conv.CreatedBy
+	}
+
 	sendJSON(w, http.StatusOK, GroupResponse{
-		ID:       conv.ID,
-		Name:     conv.Name,
-		PhotoURL: &photoURL,
-		Members:  memberResponses,
+		ID:        conv.ID,
+		Name:      conv.Name,
+		PhotoURL:  &photoURL,
+		CreatedBy: createdBy,
+		Members:   memberResponses,
 	})
 }

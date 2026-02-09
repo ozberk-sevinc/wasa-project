@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.25-alpine AS builder
+FROM golang:1.25.1-alpine AS builder
 
 # Install build dependencies (gcc, musl-dev for CGO)
 RUN apk add --no-cache gcc musl-dev sqlite-dev
@@ -27,8 +27,11 @@ WORKDIR /root/
 # Copy the binary from builder
 COPY --from=builder /app/webapi .
 
-# Expose port 8080 (as per API spec)
-EXPOSE 8080
+# Make the binary executable
+RUN chmod +x webapi
 
-# Run the application (port 8080 instead of default 3000)
-CMD ["./webapi", "-db-filename", "/data/wasatext.db", "--web-api-host", "0.0.0.0:8080"]
+# Expose port 3000 (as per API spec and default config)
+EXPOSE 3000
+
+# Run the application
+CMD ["./webapi", "--db-filename", "/data/wasatext.db", "--web-apihost", "0.0.0.0:3000"]

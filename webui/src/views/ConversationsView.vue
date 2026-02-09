@@ -22,6 +22,8 @@ export default {
 			creatingGroup: false,
 			// Group photo edit
 			editingGroupPhoto: null,
+			// Auto-refresh
+			refreshInterval: null,
 		};
 	},
 	computed: {
@@ -34,16 +36,23 @@ export default {
 		},
 	},
 	methods: {
-		async loadConversations() {
-			this.loading = true;
+		async loadConversations(silent = false) {
+			// Only show loading spinner on initial load, not on auto-refresh
+			if (!silent) {
+				this.loading = true;
+			}
 			this.error = null;
 			try {
 				const response = await conversationAPI.getAll();
 				this.conversations = response.data || [];
 			} catch (e) {
-				this.error = e.response?.data?.message || "Failed to load conversations";
+				if (!silent) {
+					this.error = e.response?.data?.message || "Failed to load conversations";
+				}
 			} finally {
-				this.loading = false;
+				if (!silent) {
+					this.loading = false;
+				}
 			}
 		},
 
@@ -243,7 +252,17 @@ export default {
 	},
 	mounted() {
 		this.loadCurrentUser();
-		this.loadConversations();
+		this.loadConversations(); // Initial load with spinner
+		// Auto-refresh conversations every 5 seconds (silent)
+		this.refreshInterval = setInterval(() => {
+			this.loadConversations(true); // Silent refresh, no spinner
+		}, 5000);
+	},
+	beforeUnmount() {
+		// Clean up interval when component is destroyed
+		if (this.refreshInterval) {
+			clearInterval(this.refreshInterval);
+		}
 	},
 };
 </script>

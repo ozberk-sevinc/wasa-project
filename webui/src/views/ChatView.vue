@@ -17,6 +17,7 @@ export default {
 			newMessage: "",
 			sending: false,
 			replyingTo: null,
+			pendingPhotoUrl: null,
 			showEmojiPicker: null,
 			showInputEmojiPicker: false,
 			showAttachMenu: false,
@@ -35,6 +36,11 @@ export default {
 			showForwardDialog: false,
 			forwardingMessage: null,
 			conversations: [],
+			// Auto-refresh
+			refreshInterval: null,
+			// Context menu
+			contextMenuMessageId: null,
+			contextMenuTimer: null,
 		};
 	},
 	computed: {
@@ -49,30 +55,72 @@ export default {
 		},
 	},
 	methods: {
-		async loadConversation() {
-			this.loading = true;
+		async loadConversation(silent = false) {
+			// Only show loading spinner on initial load, not on auto-refresh
+			if (!silent) {
+				this.loading = true;
+			}
 			this.error = null;
 			try {
 				const response = await conversationAPI.getById(this.conversationId);
+				const oldMessageCount = this.messages.length;
 				this.conversation = response.data;
 				this.messages = response.data.messages || [];
-				this.$nextTick(() => this.scrollToBottom());
+				// Only auto-scroll if: initial load, or new messages arrived and we're already at bottom
+				if (!silent || this.messages.length > oldMessageCount) {
+					this.$nextTick(() => {
+						const container = this.$refs.messagesContainer;
+						if (container) {
+							// Check if user is already scrolled to bottom (within 100px)
+							const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+							if (isAtBottom || !silent) {
+								this.scrollToBottom();
+							}
+						}
+					});
+				}
 			} catch (e) {
-				this.error = e.response?.data?.message || "Failed to load conversation";
+				if (!silent) {
+					this.error = e.response?.data?.message || "Failed to load conversation";
+				}
 			} finally {
-				this.loading = false;
+				if (!silent) {
+					this.loading = false;
+				}
 			}
 		},
 
 		async sendMessage() {
-			if (!this.newMessage.trim() || this.sending) return;
+			if ((!this.newMessage.trim() && !this.pendingPhotoUrl) || this.sending) return;
 
 			this.sending = true;
 			try {
-				const payload = {
-					contentType: "text",
-					text: this.newMessage.trim(),
-				};
+				let payload = {};
+				
+				// If we have a pending photo
+				if (this.pendingPhotoUrl) {
+					if (this.newMessage.trim()) {
+						// Send as text with photo attachment
+						payload = {
+							contentType: "text",
+							text: this.newMessage.trim(),
+							photoUrl: this.pendingPhotoUrl,
+						};
+					} else {
+						// Send as photo only
+						payload = {
+							contentType: "photo",
+							photoUrl: this.pendingPhotoUrl,
+						};
+					}
+				} else {
+					// Text only
+					payload = {
+						contentType: "text",
+						text: this.newMessage.trim(),
+					};
+				}
+				
 				if (this.replyingTo) {
 					payload.replyToMessageId = this.replyingTo.id;
 				}
@@ -80,6 +128,7 @@ export default {
 				const response = await messageAPI.send(this.conversationId, payload);
 				this.messages.push(response.data);
 				this.newMessage = "";
+				this.pendingPhotoUrl = null;
 				this.replyingTo = null;
 				this.$nextTick(() => this.scrollToBottom());
 			} catch (e) {
@@ -125,41 +174,45 @@ export default {
 			const file = event.target.files[0];
 			if (!file) return;
 
-			// For demo: use a fake URL (in real app, upload to server first)
-			// In production, you'd upload to a file server and get back a URL
-			const fakeUrl = URL.createObjectURL(file);
-			
 			this.sending = true;
 			try {
-				let payload = {};
-				
 				if (type === "photo") {
-					payload = {
-						contentType: "photo",
-						photoUrl: fakeUrl,
-					};
+					// Upload photo to server and store URL for later
+					const uploadResponse = await messageAPI.uploadPhoto(this.conversationId, file);
+					this.pendingPhotoUrl = uploadResponse.data.photoUrl;
+					// Don't send immediately - wait for user to add text or press send
+					this.$refs.messageInput?.focus();
 				} else if (type === "audio") {
-					payload = {
+					// For audio/document, send immediately
+					const fakeUrl = URL.createObjectURL(file);
+					const payload = {
 						contentType: "audio",
 						fileUrl: fakeUrl,
 						fileName: file.name,
 					};
+					if (this.replyingTo) {
+						payload.replyToMessageId = this.replyingTo.id;
+					}
+					const response = await messageAPI.send(this.conversationId, payload);
+					this.messages.push(response.data);
+					this.replyingTo = null;
+					this.$nextTick(() => this.scrollToBottom());
 				} else {
-					payload = {
+					// Document/file - send immediately
+					const fakeUrl = URL.createObjectURL(file);
+					const payload = {
 						contentType: "document",
 						fileUrl: fakeUrl,
 						fileName: file.name,
 					};
+					if (this.replyingTo) {
+						payload.replyToMessageId = this.replyingTo.id;
+					}
+					const response = await messageAPI.send(this.conversationId, payload);
+					this.messages.push(response.data);
+					this.replyingTo = null;
+					this.$nextTick(() => this.scrollToBottom());
 				}
-
-				if (this.replyingTo) {
-					payload.replyToMessageId = this.replyingTo.id;
-				}
-
-				const response = await messageAPI.send(this.conversationId, payload);
-				this.messages.push(response.data);
-				this.replyingTo = null;
-				this.$nextTick(() => this.scrollToBottom());
 			} catch (e) {
 				alert(e.response?.data?.message || "Failed to send file");
 			} finally {
@@ -214,10 +267,13 @@ export default {
 		async addReaction(messageId, emoji) {
 			try {
 				const response = await messageAPI.addReaction(this.conversationId, messageId, emoji);
-				// Update message reactions
+				// Update message reactions - replace existing user reaction if any
 				const msg = this.messages.find((m) => m.id === messageId);
 				if (msg) {
 					msg.reactions = msg.reactions || [];
+					// Remove any existing reaction from current user
+					msg.reactions = msg.reactions.filter((r) => r.user?.id !== this.currentUser?.id);
+					// Add the new reaction
 					msg.reactions.push(response.data);
 				}
 				this.showEmojiPicker = null;
@@ -238,6 +294,58 @@ export default {
 			}
 		},
 
+		canRemoveReaction(reaction) {
+			// User can only remove their own reactions
+			return reaction.user?.id === this.currentUser?.id;
+		},
+
+		groupReactionsByEmoji(reactions) {
+			if (!reactions || reactions.length === 0) return [];
+			
+			const grouped = {};
+			reactions.forEach(reaction => {
+				if (!grouped[reaction.emoji]) {
+					grouped[reaction.emoji] = {
+						emoji: reaction.emoji,
+						count: 0,
+						users: [],
+						currentUserReaction: null
+					};
+				}
+				grouped[reaction.emoji].count++;
+				grouped[reaction.emoji].users.push(reaction.user?.name || 'Unknown');
+				if (reaction.user?.id === this.currentUser?.id) {
+					grouped[reaction.emoji].currentUserReaction = reaction;
+				}
+			});
+			
+			return Object.values(grouped);
+		},
+
+		getUserReactionForMessage(message) {
+			// Find ANY reaction from the current user on this message
+			if (!message.reactions) return null;
+			return message.reactions.find(r => r.user?.id === this.currentUser?.id);
+		},
+
+		async toggleReaction(messageId, emoji, currentUserReaction) {
+			// Find the message
+			const msg = this.messages.find(m => m.id === messageId);
+			if (!msg) return;
+
+			// Check if user has ANY reaction on this message
+			const existingReaction = this.getUserReactionForMessage(msg);
+
+			if (existingReaction && existingReaction.emoji === emoji) {
+				// User already reacted with this exact emoji, remove it
+				await this.removeReaction(messageId, existingReaction.id);
+			} else {
+				// User hasn't reacted with this emoji (or hasn't reacted at all)
+				// addReaction will replace any existing reaction
+				await this.addReaction(messageId, emoji);
+			}
+		},
+
 		setReply(message) {
 			this.replyingTo = message;
 			this.$refs.messageInput?.focus();
@@ -245,6 +353,10 @@ export default {
 
 		cancelReply() {
 			this.replyingTo = null;
+		},
+
+		cancelPendingPhoto() {
+			this.pendingPhotoUrl = null;
 		},
 
 		scrollToBottom() {
@@ -294,9 +406,9 @@ export default {
 				case "sent":
 					return "✓";
 				case "received":
-					return "✓";
-				case "read":
 					return "✓✓";
+				case "read":
+					return "✓✓✓";
 				default:
 					return "";
 			}
@@ -312,6 +424,16 @@ export default {
 
 		getInitials(name) {
 			return name ? name.substring(0, 2).toUpperCase() : "??";
+		},
+
+		getPhotoUrl(url) {
+			if (!url) return null;
+			// If already absolute, return as is
+			if (url.startsWith('http://') || url.startsWith('https://')) {
+				return url;
+			}
+			// Convert relative URL to absolute by prepending API base URL
+			return __API_URL__ + url;
 		},
 
 		goBack() {
@@ -371,17 +493,68 @@ export default {
 			this.showForwardDialog = false;
 			this.forwardingMessage = null;
 		},
+
+		showContextMenu(messageId, event) {
+			event.preventDefault();
+			// Clear any existing timer
+			if (this.contextMenuTimer) {
+				clearTimeout(this.contextMenuTimer);
+			}
+			// Close emoji picker if open
+			this.showEmojiPicker = null;
+			// Show context menu for this message
+			this.contextMenuMessageId = messageId;
+			// Auto-hide after 2 seconds
+			this.contextMenuTimer = setTimeout(() => {
+				this.contextMenuMessageId = null;
+			}, 2000);
+		},
+
+		hideContextMenu() {
+			if (this.contextMenuTimer) {
+				clearTimeout(this.contextMenuTimer);
+			}
+			this.contextMenuMessageId = null;
+		},
+
+		keepContextMenuAlive() {
+			// When user hovers over the menu, keep it visible
+			if (this.contextMenuTimer) {
+				clearTimeout(this.contextMenuTimer);
+			}
+			// Reset the timer
+			this.contextMenuTimer = setTimeout(() => {
+				this.contextMenuMessageId = null;
+			}, 2000);
+		},
 	},
 	mounted() {
 		const userData = localStorage.getItem("wasatext_user");
 		if (userData) {
 			this.currentUser = JSON.parse(userData);
 		}
-		this.loadConversation();
+		this.loadConversation(); // Initial load with spinner
+		// Auto-refresh messages every 3 seconds (silent)
+		this.refreshInterval = setInterval(() => {
+			this.loadConversation(true); // Silent refresh, no spinner or scroll jump
+		}, 3000);
+	},
+	beforeUnmount() {
+		// Clean up interval when component is destroyed
+		if (this.refreshInterval) {
+			clearInterval(this.refreshInterval);
+		}
 	},
 	watch: {
 		conversationId() {
-			this.loadConversation();
+			// Clear existing interval and restart with new conversation
+			if (this.refreshInterval) {
+				clearInterval(this.refreshInterval);
+			}
+			this.loadConversation(); // Show spinner when switching conversations
+			this.refreshInterval = setInterval(() => {
+				this.loadConversation(true); // Silent refresh
+			}, 3000);
 		},
 	},
 };
@@ -443,7 +616,10 @@ export default {
 					class="message-wrapper"
 					:class="{ 'own-message': isOwnMessage(message) }"
 				>
-					<div class="message-bubble">
+					<div 
+						class="message-bubble"
+						@contextmenu="showContextMenu(message.id, $event)"
+					>
 						<!-- Reply reference -->
 						<div
 							v-if="message.repliedToMessageId"
@@ -453,13 +629,22 @@ export default {
 							<div class="reply-bar"></div>
 							<div class="reply-content">
 								<strong>{{ getRepliedMessage(message.repliedToMessageId)?.sender?.name || "Unknown" }}</strong>
-								<p>{{ getRepliedMessage(message.repliedToMessageId)?.text || "Message" }}</p>
+								<p>
+									<span v-if="getRepliedMessage(message.repliedToMessageId)?.photoUrl" class="reply-photo-icon">📷 </span>
+									{{ getRepliedMessage(message.repliedToMessageId)?.text || (getRepliedMessage(message.repliedToMessageId)?.photoUrl ? "Photo" : "Message") }}
+								</p>
 							</div>
 						</div>
 
-						<!-- Sender name (for group chats) -->
-						<div
-							v-if="!isOwnMessage(message) && conversation?.type === 'group'"
+						<!-- Forwarded marker -->
+						<div v-if="message.isForwarded" class="forwarded-marker">
+							<span class="forwarded-icon">↪️</span>
+							<span class="forwarded-text">Forwarded</span>
+						</div>
+
+						<!-- Sender name (for group messages, if not own message) -->
+						<div 
+							v-if="conversation?.type === 'group' && !isOwnMessage(message)" 
 							class="sender-name"
 						>
 							{{ message.sender?.name }}
@@ -468,14 +653,14 @@ export default {
 						<!-- Content -->
 						<div class="message-content">
 							<!-- Photo -->
-							<img
-								v-if="message.contentType === 'photo'"
-								:src="message.photoUrl"
+							<img 
+								v-if="message.photoUrl"
+								:src="getPhotoUrl(message.photoUrl)"
 								class="message-photo"
 								alt="Photo"
 							/>
 							<!-- Audio -->
-							<div v-else-if="message.contentType === 'audio'" class="file-message">
+							<div v-if="message.contentType === 'audio'" class="file-message">
 								<span class="file-icon">🎵</span>
 								<div class="file-info">
 									<span class="file-name">{{ message.fileName || 'Audio' }}</span>
@@ -484,7 +669,7 @@ export default {
 							</div>
 							<!-- Document / File -->
 							<a
-								v-else-if="message.contentType === 'document' || message.contentType === 'file'"
+								v-if="message.contentType === 'document' || message.contentType === 'file'"
 								:href="message.fileUrl"
 								target="_blank"
 								class="file-message file-link"
@@ -496,7 +681,7 @@ export default {
 								</div>
 							</a>
 							<!-- Text -->
-							<p v-else class="message-text">{{ message.text }}</p>
+							<p v-if="message.text" class="message-text">{{ message.text }}</p>
 						</div>
 
 						<!-- Footer -->
@@ -514,28 +699,46 @@ export default {
 						<!-- Reactions -->
 						<div v-if="message.reactions?.length > 0" class="message-reactions">
 							<span
-								v-for="reaction in message.reactions"
-								:key="reaction.id"
+								v-for="group in groupReactionsByEmoji(message.reactions)"
+								:key="group.emoji"
 								class="reaction-badge"
-								@click="removeReaction(message.id, reaction.id)"
-								:title="reaction.user?.name"
+								:class="{ 'own-reaction': group.currentUserReaction }"
+								@click="toggleReaction(message.id, group.emoji, group.currentUserReaction)"
+								:title="group.users.join(', ')"
 							>
-								{{ reaction.emoji }}
+								{{ group.emoji }}
+								<span v-if="group.count > 1" class="reaction-count">{{ group.count }}</span>
 							</span>
 						</div>
 					</div>
 
-					<!-- Message actions -->
-					<div class="message-actions">
-						<button @click="setReply(message)" title="Reply">↩️</button>
-						<button @click="showEmojiPicker = message.id" title="React">😊</button>
-						<button @click="openForwardDialog(message)" title="Forward">↪️</button>
+					<!-- Message actions (show on right-click) -->
+					<div 
+						v-if="contextMenuMessageId === message.id"
+						class="message-actions context-menu"
+						@mouseenter="keepContextMenuAlive"
+						@mouseleave="hideContextMenu"
+					>
+						<button @click="setReply(message); hideContextMenu()" title="Reply">
+							<span class="action-icon">↩️</span>
+							<span class="action-label">Reply</span>
+						</button>
+						<button @click="showEmojiPicker = message.id; hideContextMenu()" title="React">
+							<span class="action-icon">😊</span>
+							<span class="action-label">React</span>
+						</button>
+						<button @click="openForwardDialog(message); hideContextMenu()" title="Forward">
+							<span class="action-icon">↪️</span>
+							<span class="action-label">Forward</span>
+						</button>
 						<button
 							v-if="isOwnMessage(message)"
-							@click="deleteMessage(message.id)"
+							@click="deleteMessage(message.id); hideContextMenu()"
 							title="Delete"
+							class="delete-btn"
 						>
-							🗑️
+							<span class="action-icon">🗑️</span>
+							<span class="action-label">Delete</span>
 						</button>
 					</div>
 
@@ -561,6 +764,15 @@ export default {
 				<p>{{ replyingTo.text?.substring(0, 50) }}{{ replyingTo.text?.length > 50 ? "..." : "" }}</p>
 			</div>
 			<button class="btn-cancel-reply" @click="cancelReply">✕</button>
+		</div>
+
+		<!-- Photo preview -->
+		<div v-if="pendingPhotoUrl" class="photo-preview">
+			<div class="photo-preview-content">
+				<img :src="getPhotoUrl(pendingPhotoUrl)" alt="Preview" class="photo-preview-image" />
+				<span class="photo-preview-label">📷 Photo attached</span>
+			</div>
+			<button class="btn-cancel-photo" @click="cancelPendingPhoto">✕</button>
 		</div>
 
 		<!-- Hidden file inputs -->
@@ -824,15 +1036,17 @@ export default {
 
 .message-wrapper {
 	display: flex;
-	flex-direction: column;
+	flex-direction: row;
 	align-items: flex-start;
 	margin-bottom: 8px;
 	position: relative;
 	width: 100%;
+	gap: 8px;
 }
 
 .message-wrapper.own-message {
-	align-items: flex-end;
+	flex-direction: row-reverse;
+	justify-content: flex-start;
 }
 
 .message-bubble {
@@ -843,6 +1057,12 @@ export default {
 	padding: 8px 12px;
 	position: relative;
 	border: 1px solid #3d3a52;
+	cursor: context-menu;
+	transition: border-color 0.2s;
+}
+
+.message-bubble:hover {
+	border-color: #4c4861;
 }
 
 .own-message .message-bubble {
@@ -850,6 +1070,10 @@ export default {
 	border-color: #7c3aed;
 	border-radius: 12px;
 	border-top-right-radius: 4px;
+}
+
+.own-message .message-bubble:hover {
+	border-color: #9f7cf7;
 }
 
 .own-message .message-text {
@@ -898,6 +1122,10 @@ export default {
 	text-overflow: ellipsis;
 }
 
+.reply-photo-icon {
+	opacity: 0.8;
+}
+
 .own-message .reply-content p {
 	color: rgba(30, 39, 46, 0.7);
 }
@@ -907,6 +1135,24 @@ export default {
 	font-weight: 600;
 	color: #8b5cf6;
 	margin-bottom: 2px;
+}
+
+.forwarded-marker {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 0.7rem;
+	color: #64748b;
+	margin-bottom: 4px;
+	font-style: italic;
+}
+
+.forwarded-icon {
+	font-size: 0.8rem;
+}
+
+.own-message .forwarded-marker {
+	color: rgba(30, 39, 46, 0.6);
 }
 
 .message-text {
@@ -973,10 +1219,28 @@ export default {
 	gap: 2px;
 }
 
+.reaction-count {
+	font-size: 0.75rem;
+	font-weight: 600;
+	margin-left: 2px;
+	opacity: 0.9;
+}
+
 .reaction-badge:hover {
 	background: rgba(139, 92, 246, 0.35);
 	border-color: rgba(139, 92, 246, 0.5);
 	transform: scale(1.1);
+}
+
+.reaction-badge.own-reaction {
+	background: rgba(59, 130, 246, 0.3);
+	border-color: rgba(59, 130, 246, 0.5);
+	font-weight: 600;
+}
+
+.reaction-badge.own-reaction:hover {
+	background: rgba(59, 130, 246, 0.45);
+	border-color: rgba(59, 130, 246, 0.7);
 }
 
 .own-message .reaction-badge {
@@ -990,49 +1254,74 @@ export default {
 }
 
 .message-actions {
-	display: none;
-	position: absolute;
-	top: 50%;
-	transform: translateY(-50%);
-	right: 8px;
-	background: #252435;
-	border-radius: 16px;
-	padding: 6px 8px;
-	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+	position: relative;
+	top: 0;
+	background: #1f1d2e;
+	border-radius: 12px;
+	padding: 4px;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
 	border: 1px solid #3d3a52;
-	z-index: 10;
-}
-
-.own-message .message-actions {
-	right: auto;
-	left: 8px;
-}
-
-.message-wrapper:hover .message-actions {
+	z-index: 100;
 	display: flex;
+	flex-direction: column;
 	gap: 2px;
+	animation: contextMenuPop 0.15s ease-out;
+	min-width: 120px;
+	flex-shrink: 0;
+	align-self: flex-start;
+	margin-top: 8px;
+}
+
+@keyframes contextMenuPop {
+	0% {
+		opacity: 0;
+		transform: scale(0.9);
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
 }
 
 .message-actions button {
-	background: none;
+	background: transparent;
 	border: none;
 	cursor: pointer;
-	font-size: 1.1rem;
-	padding: 6px 8px;
-	border-radius: 6px;
+	padding: 10px 12px;
+	border-radius: 8px;
 	transition: all 0.2s;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	text-align: left;
+	color: #e2e8f0;
+	font-size: 0.9rem;
 }
 
 .message-actions button:hover {
 	background: #3d3a52;
-	transform: scale(1.1);
+}
+
+.message-actions button.delete-btn:hover {
+	background: rgba(239, 68, 68, 0.2);
+	color: #fca5a5;
+}
+
+.message-actions .action-icon {
+	font-size: 1.2rem;
+	flex-shrink: 0;
+}
+
+.message-actions .action-label {
+	font-size: 0.9rem;
+	font-weight: 500;
 }
 
 .emoji-picker {
 	position: absolute;
-	top: 50%;
-	transform: translateY(-50%);
-	right: 180px;
+	top: 100%;
+	margin-top: 4px;
 	background: #252435;
 	border-radius: 12px;
 	padding: 8px;
@@ -1043,6 +1332,14 @@ export default {
 	gap: 4px;
 	z-index: 101;
 	max-width: 200px;
+}
+
+.message-wrapper:not(.own-message) .emoji-picker {
+	left: 0;
+}
+
+.message-wrapper.own-message .emoji-picker {
+	right: 0;
 }
 
 .emoji-picker button {
@@ -1056,11 +1353,6 @@ export default {
 
 .emoji-picker button:hover {
 	background: #3d3a52;
-}
-
-.own-message .emoji-picker {
-	right: auto;
-	left: 180px;
 }
 
 .reply-preview {
@@ -1096,6 +1388,48 @@ export default {
 }
 
 .btn-cancel-reply:hover {
+	color: #e2e8f0;
+}
+
+.photo-preview {
+	background: #252435;
+	padding: 10px 14px;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	border-left: 3px solid #3b82f6;
+	border-top: 1px solid #3d3a52;
+	flex-shrink: 0;
+}
+
+.photo-preview-content {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.photo-preview-image {
+	width: 40px;
+	height: 40px;
+	object-fit: cover;
+	border-radius: 4px;
+}
+
+.photo-preview-label {
+	font-size: 0.85rem;
+	color: #3b82f6;
+}
+
+.btn-cancel-photo {
+	background: none;
+	border: none;
+	font-size: 1.1rem;
+	cursor: pointer;
+	color: #64748b;
+	padding: 4px;
+}
+
+.btn-cancel-photo:hover {
 	color: #e2e8f0;
 }
 

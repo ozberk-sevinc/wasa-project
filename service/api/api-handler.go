@@ -30,6 +30,7 @@ func (rt *_router) Handler() http.Handler {
 	rt.router.GET("/conversations", rt.authWrap(rt.getMyConversations))
 	rt.router.GET("/conversations/:conversationId", rt.authWrap(rt.getConversation))
 	rt.router.POST("/conversations/:conversationId/messages", rt.authWrap(rt.sendMessage))
+	rt.router.POST("/conversations/:conversationId/photos", rt.authWrap(rt.uploadMessagePhoto))
 	rt.router.DELETE("/conversations/:conversationId/messages/:messageId", rt.authWrap(rt.deleteMessage))
 	rt.router.POST("/conversations/:conversationId/messages/:messageId/forward", rt.authWrap(rt.forwardMessage))
 	rt.router.POST("/conversations/:conversationId/messages/:messageId/comments", rt.authWrap(rt.commentMessage))

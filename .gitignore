@@ -24,7 +24,8 @@ data/
 # Uploaded files
 uploads/
 
-# Build artifacts
+ Build artifacts
 wasatext-backend.tar
 wasatext-frontend.tar
 *.tar
+#

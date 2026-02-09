@@ -71,6 +71,13 @@ export const conversationAPI = {
 // ============================================================================
 
 export const messageAPI = {
+	uploadPhoto: (conversationId, file) => {
+		const formData = new FormData();
+		formData.append("photo", file);
+		return api.post(`/conversations/${conversationId}/photos`, formData, {
+			headers: { "Content-Type": "multipart/form-data" },
+		});
+	},
 	send: (conversationId, { contentType, text, photoUrl, fileUrl, fileName, replyToMessageId }) =>
 		api.post(`/conversations/${conversationId}/messages`, {
 			contentType,

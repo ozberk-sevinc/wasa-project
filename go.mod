@@ -1,6 +1,6 @@
 module github.com/ozberk-sevinc/wasa-project
 
-go 1.25.3
+go 1.25.1
 
 require (
 	github.com/ardanlabs/conf v1.5.0

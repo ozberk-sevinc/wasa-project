@@ -46,10 +46,11 @@ type User struct {
 
 // Conversation represents a conversation (direct or group)
 type Conversation struct {
-	ID       string
-	Type     string // "direct" or "group"
-	Name     string // group name or empty for direct
-	PhotoURL *string
+	ID        string
+	Type      string // "direct" or "group"
+	Name      string // group name or empty for direct
+	PhotoURL  *string
+	CreatedBy *string // User ID of group creator (null for direct conversations)
 }
 
 // Message represents a single message
@@ -65,6 +66,7 @@ type Message struct {
 	FileName           *string
 	RepliedToMessageID *string
 	Status             string // "sent", "received", "read"
+	IsForwarded        bool
 }
 
 // Reaction represents an emoji reaction to a message
@@ -100,7 +102,7 @@ type AppDatabase interface {
 	GetUsersPaginated(limit, offset int) ([]User, error)
 
 	// Conversation methods
-	CreateConversation(id, convType, name string) error
+	CreateConversation(id, convType, name string, createdBy *string) error
 	GetConversationByID(id string) (*Conversation, error)
 	GetConversationsByUser(userID string) ([]Conversation, error)
 	GetConversationSummariesByUser(userID string) ([]ConversationSummary, error)
@@ -120,11 +122,14 @@ type AppDatabase interface {
 	UpdateMessageStatus(id, status string) error
 	MarkMessagesAsReceived(userID string) error
 	MarkMessagesAsRead(conversationID, userID string) error
+	MarkMessageReadByUser(messageID, userID string) error
+	GetMessageStatus(messageID string) (string, error)
 
 	// Reaction methods
 	CreateReaction(r Reaction) error
 	GetReactionByID(id string) (*Reaction, error)
 	GetReactionsByMessage(messageID string) ([]Reaction, error)
+	GetUserReactionForMessage(messageID, userID string) (*Reaction, error)
 	DeleteReaction(id string) error
 
 	// Group-specific methods
@@ -182,7 +187,9 @@ func createTables(db *sql.DB) error {
             id TEXT PRIMARY KEY,
             type TEXT NOT NULL CHECK (type IN ('direct', 'group')),
             name TEXT,
-            photo_url TEXT
+            photo_url TEXT,
+            created_by TEXT,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
         )
     `)
 	if err != nil {
@@ -217,6 +224,7 @@ func createTables(db *sql.DB) error {
             file_name TEXT,
             replied_to_message_id TEXT,
             status TEXT NOT NULL DEFAULT 'sent' CHECK (status IN ('sent', 'received', 'read')),
+            is_forwarded INTEGER DEFAULT 0,
             FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
             FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (replied_to_message_id) REFERENCES messages(id) ON DELETE SET NULL
@@ -235,11 +243,27 @@ func createTables(db *sql.DB) error {
             emoji TEXT NOT NULL,
             created_at TEXT NOT NULL,
             FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(message_id, user_id)
         )
     `)
 	if err != nil {
 		return fmt.Errorf("error creating reactions table: %w", err)
+	}
+
+	// Message reads table (for tracking who has read each message in groups)
+	_, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS message_reads (
+            message_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            read_at TEXT NOT NULL,
+            PRIMARY KEY (message_id, user_id),
+            FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `)
+	if err != nil {
+		return fmt.Errorf("error creating message_reads table: %w", err)
 	}
 
 	// Indexes for performance

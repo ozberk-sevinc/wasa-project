@@ -6,7 +6,16 @@ import (
 )
 
 func (db *appdbimpl) CreateReaction(r Reaction) error {
+	// First, delete any existing reaction from this user on this message
 	_, err := db.c.Exec(`
+        DELETE FROM reactions WHERE message_id = ? AND user_id = ?
+    `, r.MessageID, r.UserID)
+	if err != nil {
+		return err
+	}
+
+	// Then insert the new reaction
+	_, err = db.c.Exec(`
         INSERT INTO reactions (id, message_id, user_id, emoji, created_at)
         VALUES (?, ?, ?, ?, ?)
     `, r.ID, r.MessageID, r.UserID, r.Emoji, r.CreatedAt)
@@ -41,6 +50,22 @@ func (db *appdbimpl) GetReactionsByMessage(messageID string) ([]Reaction, error)
 		reactions = append(reactions, r)
 	}
 	return reactions, rows.Err()
+}
+
+func (db *appdbimpl) GetUserReactionForMessage(messageID, userID string) (*Reaction, error) {
+	var r Reaction
+	err := db.c.QueryRow(`
+		SELECT id, message_id, user_id, emoji, created_at 
+		FROM reactions 
+		WHERE message_id = ? AND user_id = ?
+	`, messageID, userID).Scan(&r.ID, &r.MessageID, &r.UserID, &r.Emoji, &r.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
 }
 
 func (db *appdbimpl) DeleteReaction(id string) error {

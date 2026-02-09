@@ -14,7 +14,7 @@ info:
     Usernames must be unique across the whole system.
 
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:3000
     description: Local development server
 
 tags:
@@ -52,56 +52,6 @@ components:
       minLength: 1
       maxLength: 64
       example: "abcdef012345"
-
-    Username:
-      type: string
-      description: A unique username (3-16 alphanumeric characters).
-      pattern: '^[a-zA-Z0-9_]{3,16}$'
-      minLength: 3
-      maxLength: 16
-      example: "Ozberk"
-
-    DisplayName:
-      type: string
-      description: Optional friendly display name.
-      pattern: '^.{0,50}$'
-      minLength: 0
-      maxLength: 50
-      example: "Özberk Sevinç"
-
-    Emoji:
-      type: string
-      description: A single emoji character or sequence.
-      pattern: '^.{1,10}$'
-      minLength: 1
-      maxLength: 10
-      example: "👍"
-
-    MessageText:
-      type: string
-      description: Text content of a message.
-      pattern: '^[\s\S]{1,4096}$'
-      minLength: 1
-      maxLength: 4096
-      example: "Hello, world!"
-
-    UrlString:
-      type: string
-      format: uri
-      description: A valid URL string.
-      pattern: '^https?://.*$'
-      minLength: 1
-      maxLength: 2048
-      example: "https://example.com/photo.jpg"
-
-    DateTimeString:
-      type: string
-      format: date-time
-      description: ISO 8601 date-time string.
-      pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
-      minLength: 20
-      maxLength: 35
-      example: "2025-01-01T12:00:00Z"
 
     # ==========================================================================
     # CORE SCHEMAS
@@ -1293,4 +1243,5 @@ paths:
             text/plain:
               schema:
                 type: string
+                description: Health check status message.
                 example: "OK"
