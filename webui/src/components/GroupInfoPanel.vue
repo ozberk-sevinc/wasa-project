@@ -20,11 +20,7 @@
 						<div class="text-center mb-4">
 							<div class="position-relative d-inline-block">
 								<img
-									:src="group.photoUrl || 'https://via.placeholder.com/120?text=Group'"
-									class="rounded-circle"
-									style="width: 120px; height: 120px; object-fit: cover"
-									alt="Group photo"
-								/>
+								:src="getPhotoUrl(group.photoUrl) || 'https://via.placeholder.com/120?text=Group'"
 							</div>
 						</div>
 
@@ -130,7 +126,7 @@
 								:disabled="isAlreadyMember(user.id)"
 							>
 								<img
-									:src="user.photoUrl || 'https://via.placeholder.com/40?text=U'"
+								:src="getPhotoUrl(user.photoUrl) || 'https://via.placeholder.com/40?text=U'"
 									class="rounded-circle me-3"
 									style="width: 40px; height: 40px; object-fit: cover"
 									alt="User photo"
@@ -155,6 +151,7 @@
 
 <script>
 import { groupAPI, userAPI } from "@/services/api.js";
+import { API_URL } from "@/services/axios.js";
 
 export default {
 	name: "GroupInfoPanel",
@@ -294,6 +291,12 @@ export default {
 
 		close() {
 			this.$emit("close");
+		},
+
+		getPhotoUrl(photoUrl) {
+			if (!photoUrl) return null;
+			if (photoUrl.startsWith('http')) return photoUrl;
+			return `${API_URL}${photoUrl}`;
 		},
 	},
 };

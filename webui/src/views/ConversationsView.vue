@@ -1,5 +1,6 @@
 <script>
 import { conversationAPI, userAPI, groupAPI } from "@/services/api.js";
+import { API_URL } from "@/services/axios.js";
 
 export default {
 	name: "ConversationsView",
@@ -137,6 +138,12 @@ export default {
 
 		getInitials(name) {
 			return name ? name.substring(0, 2).toUpperCase() : "??";
+		},
+
+		getPhotoUrl(photoUrl) {
+			if (!photoUrl) return null;
+			if (photoUrl.startsWith('http')) return photoUrl;
+			return `${API_URL}${photoUrl}`;
 		},
 
 		// Group methods
@@ -323,7 +330,7 @@ export default {
 			>
 				<div class="conv-avatar" :class="{ 'group-avatar': conv.type === 'group' }">
 					<div v-if="conv.photoUrl" class="avatar-img">
-						<img :src="conv.photoUrl" :alt="conv.title" />
+						<img :src="getPhotoUrl(conv.photoUrl)" :alt="conv.title" />
 					</div>
 					<div v-else class="avatar-placeholder">
 						{{ getInitials(conv.title) }}
@@ -514,7 +521,7 @@ export default {
 					<!-- Current Photo Preview -->
 					<div class="photo-preview">
 						<div v-if="editingGroupPhoto.photoUrl" class="avatar-img large">
-							<img :src="editingGroupPhoto.photoUrl" :alt="editingGroupPhoto.title" />
+							<img :src="getPhotoUrl(editingGroupPhoto.photoUrl)" :alt="editingGroupPhoto.title" />
 						</div>
 						<div v-else class="avatar-placeholder large">
 							{{ getInitials(editingGroupPhoto.title) }}

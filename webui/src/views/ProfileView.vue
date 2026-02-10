@@ -1,5 +1,6 @@
 <script>
 import { userAPI } from "@/services/api.js";
+import { API_URL } from "@/services/axios.js";
 
 export default {
 	name: "ProfileView",
@@ -86,6 +87,12 @@ export default {
 		getInitials(name) {
 			return name ? name.substring(0, 2).toUpperCase() : "??";
 		},
+
+		getPhotoUrl(photoUrl) {
+			if (!photoUrl) return null;
+			if (photoUrl.startsWith('http')) return photoUrl;
+			return `${API_URL}${photoUrl}`;
+		},
 	},
 	mounted() {
 		this.loadProfile();
@@ -126,7 +133,7 @@ export default {
 			<!-- Avatar -->
 			<div class="profile-avatar-section">
 				<div class="profile-avatar" @click="triggerPhotoInput">
-					<img v-if="user.photoUrl" :src="user.photoUrl" :alt="user.name" />
+					<img v-if="user.photoUrl" :src="getPhotoUrl(user.photoUrl)" :alt="user.name" />
 					<div v-else class="avatar-placeholder large">
 						{{ getInitials(user.name) }}
 					</div>

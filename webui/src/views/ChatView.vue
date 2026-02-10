@@ -574,8 +574,16 @@ export default {
 				@click="openGroupInfo"
 				:title="conversation.type === 'group' ? 'Click for group info' : ''"
 			>
-				<div class="avatar-placeholder small">
-					{{ getInitials(conversation.title) }}
+				<div class="chat-avatar">
+					<img 
+						v-if="conversation.photoUrl" 
+						:src="getPhotoUrl(conversation.photoUrl)" 
+						:alt="conversation.title"
+						class="avatar-img-small"
+					/>
+					<div v-else class="avatar-placeholder small">
+						{{ getInitials(conversation.title) }}
+					</div>
 				</div>
 				<div class="chat-title-section">
 					<h2>{{ conversation.title }}</h2>
@@ -616,169 +624,177 @@ export default {
 					class="message-wrapper"
 					:class="{ 'own-message': isOwnMessage(message) }"
 				>
-					<div 
-						class="message-bubble"
-						@contextmenu="showContextMenu(message.id, $event)"
-					>
-						<!-- Reply reference -->
-						<div
-							v-if="message.repliedToMessageId"
-							class="reply-reference"
-							@click="scrollToMessage(message.repliedToMessageId)"
-						>
-							<div class="reply-bar"></div>
-							<div class="reply-content">
-								<strong>{{ getRepliedMessage(message.repliedToMessageId)?.sender?.name || "Unknown" }}</strong>
-								<p>
-									<span v-if="getRepliedMessage(message.repliedToMessageId)?.photoUrl" class="reply-photo-icon">📷 </span>
-									{{ getRepliedMessage(message.repliedToMessageId)?.text || (getRepliedMessage(message.repliedToMessageId)?.photoUrl ? "Photo" : "Message") }}
-								</p>
-							</div>
-						</div>
-
-						<!-- Forwarded marker -->
-						<div v-if="message.isForwarded" class="forwarded-marker">
-							<span class="forwarded-icon">↪️</span>
-							<span class="forwarded-text">Forwarded</span>
-						</div>
-
-						<!-- Sender name (for group messages, if not own message) -->
-						<div 
-							v-if="conversation?.type === 'group' && !isOwnMessage(message)" 
-							class="sender-name"
-						>
-							{{ message.sender?.name }}
-						</div>
-
-						<!-- Content -->
-						<div class="message-content">
-							<!-- Photo -->
-							<img 
-								v-if="message.photoUrl"
-								:src="getPhotoUrl(message.photoUrl)"
-								class="message-photo"
-								alt="Photo"
-							/>
-							<!-- Audio -->
-							<div v-if="message.contentType === 'audio'" class="file-message">
-								<span class="file-icon">🎵</span>
-								<div class="file-info">
-									<span class="file-name">{{ message.fileName || 'Audio' }}</span>
-									<audio :src="message.fileUrl" controls class="audio-player"></audio>
-								</div>
-							</div>
-							<!-- Document / File -->
-							<a
-								v-if="message.contentType === 'document' || message.contentType === 'file'"
-								:href="message.fileUrl"
-								target="_blank"
-								class="file-message file-link"
-							>
-								<span class="file-icon">{{ getFileIcon(message.contentType) }}</span>
-								<div class="file-info">
-									<span class="file-name">{{ message.fileName || 'Document' }}</span>
-									<span class="file-hint">Tap to open</span>
-								</div>
-							</a>
-							<!-- Text -->
-							<p v-if="message.text" class="message-text">{{ message.text }}</p>
-						</div>
-
-						<!-- Footer -->
-						<div class="message-footer">
-							<span class="message-time">{{ formatTime(message.createdAt) }}</span>
-							<span
-								v-if="isOwnMessage(message)"
-								class="message-status"
-								:class="getStatusClass(message.status)"
-							>
-								{{ getStatusIcon(message.status) }}
-							</span>
-						</div>
-
-						<!-- Reactions -->
-						<div v-if="message.reactions?.length > 0" class="message-reactions">
-							<span
-								v-for="group in groupReactionsByEmoji(message.reactions)"
-								:key="group.emoji"
-								class="reaction-badge"
-								:class="{ 'own-reaction': group.currentUserReaction }"
-								@click="toggleReaction(message.id, group.emoji, group.currentUserReaction)"
-								:title="group.users.join(', ')"
-							>
-								{{ group.emoji }}
-								<span v-if="group.count > 1" class="reaction-count">{{ group.count }}</span>
-							</span>
-						</div>
-					</div>
-
-					<!-- Message actions (show on right-click) -->
-					<div 
-						v-if="contextMenuMessageId === message.id"
-						class="message-actions context-menu"
-						@mouseenter="keepContextMenuAlive"
-						@mouseleave="hideContextMenu"
-					>
-						<button @click="setReply(message); hideContextMenu()" title="Reply">
-							<span class="action-icon">↩️</span>
-							<span class="action-label">Reply</span>
-						</button>
-						<button @click="showEmojiPicker = message.id; hideContextMenu()" title="React">
-							<span class="action-icon">😊</span>
-							<span class="action-label">React</span>
-						</button>
-						<button @click="openForwardDialog(message); hideContextMenu()" title="Forward">
-							<span class="action-icon">↪️</span>
-							<span class="action-label">Forward</span>
-						</button>
-						<button
-							v-if="isOwnMessage(message)"
-							@click="deleteMessage(message.id); hideContextMenu()"
-							title="Delete"
-							class="delete-btn"
-						>
-							<span class="action-icon">🗑️</span>
-							<span class="action-label">Delete</span>
-						</button>
-					</div>
-
-					<!-- Emoji picker -->
-					<div v-if="showEmojiPicker === message.id" class="emoji-picker">
-						<button
-							v-for="emoji in commonEmojis"
-							:key="emoji"
-							@click="addReaction(message.id, emoji)"
-						>
-							{{ emoji }}
-						</button>
-						<button @click="showEmojiPicker = null">✕</button>
+				<!-- Sender avatar (for messages from others) -->
+				<div v-if="!isOwnMessage(message)" class="message-avatar">
+					<img 
+						v-if="message.sender?.photoUrl" 
+						:src="getPhotoUrl(message.sender.photoUrl)" 
+						:alt="message.sender?.name"
+						class="avatar-img-small"
+					/>
+					<div v-else class="avatar-placeholder-small">
+						{{ getInitials(message.sender?.name) }}
 					</div>
 				</div>
-			</template>
-		</div>
 
-		<!-- Reply preview -->
-		<div v-if="replyingTo" class="reply-preview">
-			<div class="reply-preview-content">
-				<strong>Replying to {{ replyingTo.sender?.name }}</strong>
-				<p>{{ replyingTo.text?.substring(0, 50) }}{{ replyingTo.text?.length > 50 ? "..." : "" }}</p>
+				<div 
+					class="message-bubble"
+					@contextmenu="showContextMenu(message.id, $event)"
+				>
+					<!-- Reply reference -->
+				<div
+					v-if="message.repliedToMessageId"
+					class="reply-reference"
+					@click="scrollToMessage(message.repliedToMessageId)"
+				>
+					<div class="reply-bar"></div>
+					<div class="reply-content">
+						<strong>{{ getRepliedMessage(message.repliedToMessageId)?.sender?.name || "Unknown" }}</strong>
+						<p>
+							<span v-if="getRepliedMessage(message.repliedToMessageId)?.photoUrl" class="reply-photo-icon">📷 </span>
+							{{ getRepliedMessage(message.repliedToMessageId)?.text || (getRepliedMessage(message.repliedToMessageId)?.photoUrl ? "Photo" : "Message") }}
+						</p>
+					</div>
+				</div>
+
+				<!-- Forwarded marker -->
+				<div v-if="message.isForwarded" class="forwarded-marker">
+					<span class="forwarded-icon">↪️</span>
+					<span class="forwarded-text">Forwarded</span>
+				</div>
+
+				<!-- Sender name (for group messages, if not own message) -->
+				<div 
+					v-if="conversation?.type === 'group' && !isOwnMessage(message)" 
+					class="sender-name"
+				>
+					{{ message.sender?.name }}
+				</div>
+
+				<!-- Content -->
+				<div class="message-content">
+					<!-- Photo -->
+					<img 
+						v-if="message.photoUrl"
+						:src="getPhotoUrl(message.photoUrl)"
+						class="message-photo"
+						alt="Photo"
+					/>
+					<!-- Audio -->
+					<div v-if="message.contentType === 'audio'" class="file-message">
+						<span class="file-icon">🎵</span>
+						<div class="file-info">
+							<span class="file-name">{{ message.fileName || 'Audio' }}</span>
+							<audio :src="message.fileUrl" controls class="audio-player"></audio>
+						</div>
+					</div>
+					<!-- Document / File -->
+					<a
+						v-if="message.contentType === 'document' || message.contentType === 'file'"
+						:href="message.fileUrl"
+						target="_blank"
+						class="file-message file-link"
+					>
+						<span class="file-icon">{{ getFileIcon(message.contentType) }}</span>
+						<div class="file-info">
+							<span class="file-name">{{ message.fileName || 'Document' }}</span>
+							<span class="file-hint">Tap to open</span>
+						</div>
+					</a>
+					<!-- Text -->
+					<p v-if="message.text" class="message-text">{{ message.text }}</p>
+				</div>
+
+				<!-- Footer -->
+				<div class="message-footer">
+					<span class="message-time">{{ formatTime(message.createdAt) }}</span>
+					<span
+						v-if="isOwnMessage(message)"
+						class="message-status"
+						:class="getStatusClass(message.status)"
+					>
+						{{ getStatusIcon(message.status) }}
+					</span>
+				</div>
+
+				<!-- Reactions -->
+				<div v-if="message.reactions?.length > 0" class="message-reactions">
+					<span
+						v-for="group in groupReactionsByEmoji(message.reactions)"
+						:key="group.emoji"
+						class="reaction-badge"
+						:class="{ 'own-reaction': group.currentUserReaction }"
+						@click="toggleReaction(message.id, group.emoji, group.currentUserReaction)"
+						:title="group.users.join(', ')"
+					>
+						{{ group.emoji }}
+						<span v-if="group.count > 1" class="reaction-count">{{ group.count }}</span>
+					</span>
+				</div>
 			</div>
-			<button class="btn-cancel-reply" @click="cancelReply">✕</button>
+
+		<!-- Message actions (show on right-click) -->
+		<div 
+			v-if="contextMenuMessageId === message.id"
+			class="message-actions context-menu"
+			@mouseenter="keepContextMenuAlive"
+			@mouseleave="hideContextMenu"
+		>
+			<button @click="setReply(message); hideContextMenu()" title="Reply">
+				<span class="action-icon">↩️</span>
+				<span class="action-label">Reply</span>
+			</button>
+			<button @click="showEmojiPicker = message.id; hideContextMenu()" title="React">
+				<span class="action-icon">😊</span>
+				<span class="action-label">React</span>
+			</button>
+			<button @click="openForwardDialog(message); hideContextMenu()" title="Forward">
+				<span class="action-icon">↪️</span>
+				<span class="action-label">Forward</span>
+			</button>
+			<button
+				v-if="isOwnMessage(message)"
+				@click="deleteMessage(message.id); hideContextMenu()"
+				title="Delete"
+				class="delete-btn"
+			>
+				<span class="action-icon">🗑️</span>
+				<span class="action-label">Delete</span>
+			</button>
 		</div>
 
-		<!-- Photo preview -->
-		<div v-if="pendingPhotoUrl" class="photo-preview">
-			<div class="photo-preview-content">
-				<img :src="getPhotoUrl(pendingPhotoUrl)" alt="Preview" class="photo-preview-image" />
-				<span class="photo-preview-label">📷 Photo attached</span>
-			</div>
-			<button class="btn-cancel-photo" @click="cancelPendingPhoto">✕</button>
+		<!-- Emoji picker -->
+		<div v-if="showEmojiPicker === message.id" class="emoji-picker">
+			<button
+				v-for="emoji in commonEmojis"
+				:key="emoji"
+				@click="addReaction(message.id, emoji)"
+			>
+				{{ emoji }}
+			</button>
+			<button @click="showEmojiPicker = null">✕</button>
 		</div>
+	</div>
+</template>
+</div>
 
-		<!-- Hidden file inputs -->
-		<input
-			type="file"
-			ref="photoInput"
+<!-- Reply preview -->
+<div v-if="replyingTo" class="reply-preview">
+	<div class="reply-preview-content">
+		<strong>Replying to {{ replyingTo.sender?.name }}</strong>
+		<p>{{ replyingTo.text?.substring(0, 50) }}{{ replyingTo.text?.length > 50 ? "..." : "" }}</p>
+	</div>
+	<button class="btn-cancel-reply" @click="cancelReply">✕</button>
+</div>
+
+<!-- Photo preview -->
+<div v-if="pendingPhotoUrl" class="photo-preview">
+	<div class="photo-preview-content">
+		<img :src="getPhotoUrl(pendingPhotoUrl)" alt="Preview" class="photo-preview-image" />
+		<span class="photo-preview-label">📷 Photo attached</span>
+	</div>
+	<button class="btn-cancel-photo" @click="cancelPendingPhoto">✕</button>
+</div>
 			accept="image/*"
 			style="display: none"
 			@change="(e) => handleFileSelect(e, 'photo')"
@@ -954,6 +970,12 @@ export default {
 	background: rgba(255, 255, 255, 0.1);
 }
 
+.chat-avatar {
+	width: 38px;
+	height: 38px;
+	flex-shrink: 0;
+}
+
 .avatar-placeholder.small {
 	width: 38px;
 	height: 38px;
@@ -1047,6 +1069,34 @@ export default {
 .message-wrapper.own-message {
 	flex-direction: row-reverse;
 	justify-content: flex-start;
+}
+
+.message-avatar {
+	flex-shrink: 0;
+	width: 32px;
+	height: 32px;
+	margin-top: 0;
+}
+
+.avatar-img-small {
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	object-fit: cover;
+}
+
+.avatar-placeholder-small {
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: white;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
 }
 
 .message-bubble {

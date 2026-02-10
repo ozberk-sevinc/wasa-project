@@ -476,13 +476,15 @@ func (rt *_router) getMyConversations(w http.ResponseWriter, r *http.Request, ps
 
 	var response []ConversationSummaryResponse
 	for _, s := range summaries {
-		// For direct conversations, get the other participant's name as title
+		// For direct conversations, get the other participant's name and photo as title/photo
 		title := s.Title
+		photoURL := s.PhotoURL
 		if s.Type == "direct" {
 			participants, _ := rt.db.GetParticipants(s.ID)
 			for _, p := range participants {
 				if p.ID != user.ID {
 					title = p.Name
+					photoURL = p.PhotoURL
 					break
 				}
 			}
@@ -492,7 +494,7 @@ func (rt *_router) getMyConversations(w http.ResponseWriter, r *http.Request, ps
 			ID:                 s.ID,
 			Type:               s.Type,
 			Title:              title,
-			PhotoURL:           s.PhotoURL,
+			PhotoURL:           photoURL,
 			LastMessageAt:      s.LastMessageAt,
 			LastMessageSnippet: s.LastMessageSnippet,
 			LastMessageIsPhoto: s.LastMessageIsPhoto,
@@ -631,12 +633,14 @@ func (rt *_router) getConversation(w http.ResponseWriter, r *http.Request, ps ht
 		messageResponses = []MessageResponse{}
 	}
 
-	// Determine title
+	// Determine title and photoURL for direct conversations
 	title := conv.Name
+	photoURL := conv.PhotoURL
 	if conv.Type == "direct" {
 		for _, p := range participants {
 			if p.ID != user.ID {
 				title = p.Name
+				photoURL = p.PhotoURL
 				break
 			}
 		}
@@ -646,7 +650,7 @@ func (rt *_router) getConversation(w http.ResponseWriter, r *http.Request, ps ht
 		ID:           conv.ID,
 		Type:         conv.Type,
 		Title:        title,
-		PhotoURL:     conv.PhotoURL,
+		PhotoURL:     photoURL,
 		Participants: participantResponses,
 		Messages:     messageResponses,
 	})
