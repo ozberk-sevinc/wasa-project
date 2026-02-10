@@ -97,3 +97,38 @@ func (db *appdbimpl) GetUsersPaginated(limit, offset int) ([]User, error) {
 	}
 	return users, rows.Err()
 }
+
+// GetUsersByIDs fetches multiple users at once - optimized for batch queries
+func (db *appdbimpl) GetUsersByIDs(ids []string) ([]User, error) {
+	if len(ids) == 0 {
+		return []User{}, nil
+	}
+
+	// Build placeholders for SQL IN clause
+	placeholders := ""
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += "?"
+		args[i] = id
+	}
+
+	query := "SELECT id, name, display_name, photo_url FROM users WHERE id IN (" + placeholders + ")"
+	rows, err := db.c.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Name, &u.DisplayName, &u.PhotoURL); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}

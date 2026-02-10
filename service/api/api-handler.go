@@ -50,6 +50,7 @@ func (rt *_router) Handler() http.Handler {
 	// SPECIAL ROUTES
 	// ========================================
 	rt.router.GET("/liveness", rt.liveness)
+	rt.router.GET("/ws", rt.wrap(rt.handleWebSocket))
 
 	// Serve uploaded files
 	rt.router.ServeFiles("/uploads/*filepath", http.Dir("./uploads"))

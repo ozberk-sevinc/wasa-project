@@ -72,3 +72,27 @@ func (db *appdbimpl) DeleteReaction(id string) error {
 	_, err := db.c.Exec("DELETE FROM reactions WHERE id = ?", id)
 	return err
 }
+
+// GetReactionsByConversation fetches all reactions for all messages in a conversation at once
+func (db *appdbimpl) GetReactionsByConversation(conversationID string) ([]Reaction, error) {
+	rows, err := db.c.Query(`
+		SELECT r.id, r.message_id, r.user_id, r.emoji, r.created_at 
+		FROM reactions r
+		JOIN messages m ON r.message_id = m.id
+		WHERE m.conversation_id = ?
+	`, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var reactions []Reaction
+	for rows.Next() {
+		var r Reaction
+		if err := rows.Scan(&r.ID, &r.MessageID, &r.UserID, &r.Emoji, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		reactions = append(reactions, r)
+	}
+	return reactions, rows.Err()
+}

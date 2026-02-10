@@ -100,6 +100,7 @@ type AppDatabase interface {
 	SearchUsers(query string) ([]User, error)
 	GetAllUsers() ([]User, error)
 	GetUsersPaginated(limit, offset int) ([]User, error)
+	GetUsersByIDs(ids []string) ([]User, error)
 
 	// Conversation methods
 	CreateConversation(id, convType, name string, createdBy *string) error
@@ -129,6 +130,7 @@ type AppDatabase interface {
 	CreateReaction(r Reaction) error
 	GetReactionByID(id string) (*Reaction, error)
 	GetReactionsByMessage(messageID string) ([]Reaction, error)
+	GetReactionsByConversation(conversationID string) ([]Reaction, error)
 	GetUserReactionForMessage(messageID, userID string) (*Reaction, error)
 	DeleteReaction(id string) error
 

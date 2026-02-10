@@ -566,33 +566,67 @@ func (rt *_router) getConversation(w http.ResponseWriter, r *http.Request, ps ht
 		return
 	}
 
+	// Optimize: Collect all unique user IDs from messages
+	userIDSet := make(map[string]bool)
+	for _, p := range participants {
+		userIDSet[p.ID] = true
+	}
+	for _, m := range messages {
+		userIDSet[m.SenderID] = true
+	}
+
+	// Optimize: Fetch all reactions for this conversation at once
+	allReactions, err := rt.db.GetReactionsByConversation(conversationID)
+	if err != nil {
+		ctx.Logger.WithError(err).Warn("error fetching reactions")
+		allReactions = []database.Reaction{}
+	}
+
+	// Group reactions by message ID
+	reactionsByMessage := make(map[string][]database.Reaction)
+	for _, r := range allReactions {
+		reactionsByMessage[r.MessageID] = append(reactionsByMessage[r.MessageID], r)
+		userIDSet[r.UserID] = true
+	}
+
+	// Optimize: Fetch all users at once
+	var userIDs []string
+	for id := range userIDSet {
+		userIDs = append(userIDs, id)
+	}
+	users, err := rt.db.GetUsersByIDs(userIDs)
+	if err != nil {
+		ctx.Logger.WithError(err).Warn("error fetching users in batch")
+		users = []database.User{}
+	}
+
+	// Create user map for O(1) lookups
+	userMap := make(map[string]database.User)
+	for _, u := range users {
+		userMap[u.ID] = u
+	}
+
 	var messageResponses []MessageResponse
 	for _, m := range messages {
-		// Get sender
-		sender, _ := rt.db.GetUserByID(m.SenderID)
-		var senderResponse UserResponse
-		if sender != nil {
-			senderResponse = UserResponse{
-				ID:          sender.ID,
-				Name:        sender.Name,
-				DisplayName: sender.DisplayName,
-				PhotoURL:    sender.PhotoURL,
-			}
+		// Get sender from map
+		sender := userMap[m.SenderID]
+		senderResponse := UserResponse{
+			ID:          sender.ID,
+			Name:        sender.Name,
+			DisplayName: sender.DisplayName,
+			PhotoURL:    sender.PhotoURL,
 		}
 
-		// Get reactions
-		reactions, _ := rt.db.GetReactionsByMessage(m.ID)
+		// Get reactions from map
+		reactions := reactionsByMessage[m.ID]
 		var reactionResponses []ReactionResponse
 		for _, reaction := range reactions {
-			reactUser, _ := rt.db.GetUserByID(reaction.UserID)
-			var reactUserResponse UserResponse
-			if reactUser != nil {
-				reactUserResponse = UserResponse{
-					ID:          reactUser.ID,
-					Name:        reactUser.Name,
-					DisplayName: reactUser.DisplayName,
-					PhotoURL:    reactUser.PhotoURL,
-				}
+			reactUser := userMap[reaction.UserID]
+			reactUserResponse := UserResponse{
+				ID:          reactUser.ID,
+				Name:        reactUser.Name,
+				DisplayName: reactUser.DisplayName,
+				PhotoURL:    reactUser.PhotoURL,
 			}
 			reactionResponses = append(reactionResponses, ReactionResponse{
 				ID:        reaction.ID,
@@ -730,7 +764,7 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		return
 	}
 
-	sendJSON(w, http.StatusCreated, MessageResponse{
+	messageResponse := MessageResponse{
 		ID:             msg.ID,
 		ConversationID: msg.ConversationID,
 		Sender: UserResponse{
@@ -749,7 +783,22 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		Status:             msg.Status,
 		Reactions:          []ReactionResponse{},
 		IsForwarded:        msg.IsForwarded,
-	})
+	}
+
+	// Broadcast new message to all conversation participants via WebSocket
+	participants, err := rt.db.GetParticipants(conversationID)
+	if err == nil && len(participants) > 0 {
+		var participantIDs []string
+		for _, p := range participants {
+			participantIDs = append(participantIDs, p.ID)
+		}
+		rt.wsHub.BroadcastToUsers(participantIDs, WebSocketMessage{
+			Type:    "new_message",
+			Payload: messageResponse,
+		})
+	}
+
+	sendJSON(w, http.StatusCreated, messageResponse)
 }
 
 // ============================================================================

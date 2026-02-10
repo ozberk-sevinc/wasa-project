@@ -78,10 +78,19 @@ func New(cfg Config) (Router, error) {
 	router.RedirectTrailingSlash = false
 	router.RedirectFixedPath = false
 
+	// Create WebSocket hub
+	logger, ok := cfg.Logger.(*logrus.Logger)
+	if !ok {
+		// Fallback to a new logger if the type assertion fails
+		logger = logrus.New()
+	}
+	wsHub := NewWebSocketHub(logger)
+
 	return &_router{
 		router:     router,
 		baseLogger: cfg.Logger,
 		db:         cfg.Database,
+		wsHub:      wsHub,
 	}, nil
 }
 
@@ -93,4 +102,6 @@ type _router struct {
 	baseLogger logrus.FieldLogger
 
 	db database.AppDatabase
+
+	wsHub *WebSocketHub
 }

@@ -38,6 +38,9 @@ export default {
 			conversations: [],
 			// Auto-refresh
 			refreshInterval: null,
+			// WebSocket
+			ws: null,
+			wsConnected: false,
 			// Context menu
 			contextMenuMessageId: null,
 			contextMenuTimer: null,
@@ -55,17 +58,100 @@ export default {
 		},
 	},
 	methods: {
+		connectWebSocket() {
+			const token = localStorage.getItem("wasatext_token");
+			if (!token) {
+				console.warn("No token found for WebSocket connection");
+				return;
+			}
+
+			// Use ws:// for http and wss:// for https
+			const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+			const wsUrl = `${protocol}//localhost:3000/ws?token=${encodeURIComponent(token)}`;
+			
+			console.log("Connecting to WebSocket:", wsUrl.replace(/token=[^&]+/, "token=***"));
+
+			this.ws = new WebSocket(wsUrl);
+
+			this.ws.onopen = () => {
+				console.log("WebSocket connected successfully");
+				this.wsConnected = true;
+			};
+
+			this.ws.onmessage = (event) => {
+				try {
+					const data = JSON.parse(event.data);
+					
+					if (data.type === "new_message") {
+						const message = data.payload;
+						// Only add message if it's for the current conversation
+						if (message.conversationId === this.conversationId) {
+							// Check if message already exists (avoid duplicates)
+							const exists = this.messages.some(m => m.id === message.id);
+							if (!exists) {
+								this.messages.push(message);
+								this.$nextTick(() => {
+									const container = this.$refs.messagesContainer;
+									if (container) {
+										const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+										if (isAtBottom) {
+											this.scrollToBottom();
+										}
+									}
+								});
+							}
+						}
+					}
+				} catch (e) {
+					console.error("Error parsing WebSocket message:", e);
+				}
+			};
+
+			this.ws.onerror = (error) => {
+				console.error("WebSocket error:", error);
+				this.wsConnected = false;
+			};
+
+			this.ws.onclose = () => {
+				console.log("WebSocket disconnected");
+				this.wsConnected = false;
+				// Attempt to reconnect after 3 seconds
+				setTimeout(() => {
+					if (this.$route.name === "ChatView") {
+						this.connectWebSocket();
+					}
+				}, 3000);
+			};
+		},
+
+		disconnectWebSocket() {
+			if (this.ws) {
+				this.ws.close();
+				this.ws = null;
+				this.wsConnected = false;
+			}
+		},
+
 		async loadConversation(silent = false) {
 			// Only show loading spinner on initial load, not on auto-refresh
 			if (!silent) {
 				this.loading = true;
+				console.log("🔄 Loading conversation, setting loading=true");
 			}
 			this.error = null;
+			
+			console.log("📡 Fetching conversation ID:", this.conversationId);
+			const startTime = Date.now();
+			
 			try {
 				const response = await conversationAPI.getById(this.conversationId);
+				const loadTime = Date.now() - startTime;
+				console.log(`✅ Conversation loaded in ${loadTime}ms`);
+				
 				const oldMessageCount = this.messages.length;
 				this.conversation = response.data;
 				this.messages = response.data.messages || [];
+				console.log(`📨 Loaded ${this.messages.length} messages`);
 				// Only auto-scroll if: initial load, or new messages arrived and we're already at bottom
 				if (!silent || this.messages.length > oldMessageCount) {
 					this.$nextTick(() => {
@@ -81,11 +167,15 @@ export default {
 				}
 			} catch (e) {
 				if (!silent) {
+					console.error("❌ Error loading conversation:", e);
+					console.error("Response data:", e.response?.data);
+					console.error("Status:", e.response?.status);
 					this.error = e.response?.data?.message || "Failed to load conversation";
 				}
 			} finally {
 				if (!silent) {
 					this.loading = false;
+					console.log("✅ Loading complete, setting loading=false");
 				}
 			}
 		},
@@ -532,18 +622,29 @@ export default {
 		const userData = localStorage.getItem("wasatext_user");
 		if (userData) {
 			this.currentUser = JSON.parse(userData);
+			console.log("Logged in as:", this.currentUser.name, "ID:", this.currentUser.id);
+		} else {
+			console.warn("No user data found in localStorage");
 		}
+		
+		console.log("Loading conversation ID:", this.conversationId);
 		this.loadConversation(); // Initial load with spinner
-		// Auto-refresh messages every 3 seconds (silent)
+		
+		// Connect to WebSocket for real-time updates
+		this.connectWebSocket();
+		
+		// Auto-refresh messages every 30 seconds as fallback (in case WebSocket fails)
 		this.refreshInterval = setInterval(() => {
 			this.loadConversation(true); // Silent refresh, no spinner or scroll jump
-		}, 3000);
+		}, 30000);
 	},
 	beforeUnmount() {
 		// Clean up interval when component is destroyed
 		if (this.refreshInterval) {
 			clearInterval(this.refreshInterval);
 		}
+		// Disconnect WebSocket
+		this.disconnectWebSocket();
 	},
 	watch: {
 		conversationId() {
@@ -554,7 +655,9 @@ export default {
 			this.loadConversation(); // Show spinner when switching conversations
 			this.refreshInterval = setInterval(() => {
 				this.loadConversation(true); // Silent refresh
-			}, 3000);
+			}, 30000);
+			
+			// WebSocket connection stays active across conversations
 		},
 	},
 };
@@ -795,24 +898,29 @@ export default {
 	</div>
 	<button class="btn-cancel-photo" @click="cancelPendingPhoto">✕</button>
 </div>
-			accept="image/*"
-			style="display: none"
-			@change="(e) => handleFileSelect(e, 'photo')"
-		/>
-		<input
-			type="file"
-			ref="audioInput"
-			accept="audio/*"
-			style="display: none"
-			@change="(e) => handleFileSelect(e, 'audio')"
-		/>
-		<input
-			type="file"
-			ref="documentInput"
-			accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.ppt,.pptx"
-			style="display: none"
-			@change="(e) => handleFileSelect(e, 'document')"
-		/>
+
+<!-- Hidden file inputs -->
+<input
+	type="file"
+	ref="photoInput"
+	accept="image/*"
+	style="display: none"
+	@change="(e) => handleFileSelect(e, 'photo')"
+/>
+<input
+	type="file"
+	ref="audioInput"
+	accept="audio/*"
+	style="display: none"
+	@change="(e) => handleFileSelect(e, 'audio')"
+/>
+<input
+	type="file"
+	ref="documentInput"
+	accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.ppt,.pptx"
+	style="display: none"
+	@change="(e) => handleFileSelect(e, 'document')"
+/>
 
 		<!-- Input area -->
 		<div class="input-area">
