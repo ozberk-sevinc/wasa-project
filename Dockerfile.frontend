@@ -12,8 +12,10 @@ COPY webui/package.json webui/yarn.lock ./
 # Install dependencies
 RUN yarn install
 
-# Copy source files
-COPY webui/ .
+# Copy source files (excluding node_modules and build artifacts)
+COPY webui/src ./src
+COPY webui/public ./public
+COPY webui/index.html webui/vite.config.js ./
 
 # Build the Vue application
 RUN yarn run build-prod

@@ -15,7 +15,7 @@ func (rt *_router) Handler() http.Handler {
 	// CURRENT USER /me (auth required)
 	// ========================================
 	rt.router.GET("/me", rt.authWrap(rt.getMe))
-	rt.router.PUT("/me/username", rt.authWrap(rt.setMyUsername))
+	rt.router.PUT("/me/username", rt.authWrap(rt.setMyUserName))
 	rt.router.PUT("/me/photo", rt.authWrap(rt.setMyPhoto))
 
 	// ========================================
@@ -26,7 +26,7 @@ func (rt *_router) Handler() http.Handler {
 	// ========================================
 	// CONVERSATIONS (auth required)
 	// ========================================
-	rt.router.POST("/conversations", rt.authWrap(rt.createConversation))
+	rt.router.POST("/conversations", rt.authWrap(rt.startConversation))
 	rt.router.GET("/conversations", rt.authWrap(rt.getMyConversations))
 	rt.router.GET("/conversations/:conversationId", rt.authWrap(rt.getConversation))
 	rt.router.POST("/conversations/:conversationId/messages", rt.authWrap(rt.sendMessage))
@@ -49,7 +49,7 @@ func (rt *_router) Handler() http.Handler {
 	// ========================================
 	// SPECIAL ROUTES
 	// ========================================
-	rt.router.GET("/liveness", rt.liveness)
+	rt.router.GET("/liveness", rt.getLiveness)
 	rt.router.GET("/ws", rt.wrap(rt.handleWebSocket))
 
 	// Serve uploaded files

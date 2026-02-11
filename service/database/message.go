@@ -33,7 +33,7 @@ func (db *appdbimpl) GetMessagesByConversation(conversationID string) ([]Message
         SELECT id, conversation_id, sender_id, created_at, content_type, text, photo_url, file_url, file_name, replied_to_message_id, status, is_forwarded
         FROM messages
         WHERE conversation_id = ?
-        ORDER BY created_at DESC
+        ORDER BY created_at ASC
     `, conversationID)
 	if err != nil {
 		return nil, err
@@ -56,7 +56,7 @@ func (db *appdbimpl) GetMessagesByConversationPaginated(conversationID string, l
         SELECT id, conversation_id, sender_id, created_at, content_type, text, photo_url, file_url, file_name, replied_to_message_id, status, is_forwarded
         FROM messages
         WHERE conversation_id = ?
-        ORDER BY created_at DESC
+        ORDER BY created_at ASC
         LIMIT ? OFFSET ?
     `, conversationID, limit, offset)
 	if err != nil {
@@ -146,7 +146,7 @@ func (db *appdbimpl) GetMessageStatus(messageID string) (string, error) {
 		SELECT conversation_id, sender_id FROM messages WHERE id = ?
 	`, messageID).Scan(&conversationID, &senderID)
 	if err != nil {
-		return "sent", err
+		return StatusSent, err
 	}
 
 	// Get total number of participants (excluding sender)
@@ -156,12 +156,12 @@ func (db *appdbimpl) GetMessageStatus(messageID string) (string, error) {
 		WHERE conversation_id = ? AND user_id != ?
 	`, conversationID, senderID).Scan(&totalParticipants)
 	if err != nil {
-		return "sent", err
+		return StatusSent, err
 	}
 
 	// If no other participants, status is just "sent"
 	if totalParticipants == 0 {
-		return "sent", nil
+		return StatusSent, nil
 	}
 
 	// Count how many participants have read the message
@@ -171,15 +171,15 @@ func (db *appdbimpl) GetMessageStatus(messageID string) (string, error) {
 		WHERE message_id = ?
 	`, messageID).Scan(&readCount)
 	if err != nil {
-		return "sent", err
+		return StatusSent, err
 	}
 
 	// Determine status based on read counts
 	if readCount == 0 {
-		return "sent", nil
+		return StatusSent, nil
 	} else if readCount >= totalParticipants {
-		return "read", nil
+		return StatusRead, nil
 	} else {
-		return "received", nil
+		return StatusReceived, nil
 	}
 }

@@ -334,6 +334,14 @@ components:
             $ref: '#/components/schemas/Message'
           minItems: 0
           maxItems: 10000
+        lastMessage:
+          description: The most recent message in this conversation (used in summary views).
+          $ref: '#/components/schemas/Message'
+        unreadCount:
+          type: integer
+          description: Number of messages in this conversation that the current user has not yet read.
+          minimum: 0
+          example: 3
       required:
         - id
         - type
@@ -887,6 +895,68 @@ paths:
                 $ref: '#/components/schemas/Message'
         '404':
           description: The conversation could not be found or the user is not a participant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /conversations/{conversationId}/photos:
+    post:
+      tags: ["messages"]
+      summary: Upload a photo for a message
+      description: |
+        Uploads a photo to the specified conversation. Returns the URL of the
+        uploaded photo, which can then be used when sending a photo message.
+      operationId: uploadMessagePhoto
+      parameters:
+        - in: path
+          name: conversationId
+          required: true
+          schema:
+            $ref: '#/components/schemas/Identifier'
+          description: Id of the conversation the photo belongs to.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              description: Multipart form containing the photo file.
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                  description: Image file to upload.
+                  minLength: 1
+                  maxLength: 10485760
+              required:
+                - photo
+      responses:
+        '200':
+          description: Photo uploaded successfully; URL returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Object containing the URL of the uploaded photo.
+                properties:
+                  photoUrl:
+                    type: string
+                    description: Relative URL path to the uploaded photo.
+                    pattern: '^/uploads/.*$'
+                    minLength: 1
+                    maxLength: 2048
+                    example: "/uploads/messages/abc123/photo.jpg"
+                required:
+                  - photoUrl
+        '400':
+          description: The uploaded file is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: The conversation does not exist or the user is not a participant.
           content:
             application/json:
               schema:

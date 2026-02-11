@@ -25,6 +25,10 @@ export default {
 			editingGroupPhoto: null,
 			// Auto-refresh
 			refreshInterval: null,
+			// WebSocket
+			ws: null,
+			wsConnected: false,
+			wsReconnectTimer: null,
 		};
 	},
 	computed: {
@@ -65,6 +69,127 @@ export default {
 			} catch (e) {
 				console.error("Failed to load user", e);
 			}
+		},
+
+		connectWebSocket() {
+			const token = localStorage.getItem("wasatext_token");
+			if (!token) {
+				console.warn("No token for WebSocket connection");
+				return;
+			}
+
+			const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+			const wsUrl = `${protocol}//${window.location.host}/api/ws?token=${encodeURIComponent(token)}`;
+
+			console.log("🔌 Connecting to WebSocket (ConversationsView)...");
+			this.ws = new WebSocket(wsUrl);
+
+			this.ws.onopen = () => {
+				console.log("✅ WebSocket connected - real-time conversation updates enabled");
+				this.wsConnected = true;
+				if (this.refreshInterval) {
+					clearInterval(this.refreshInterval);
+					this.refreshInterval = null;
+				}
+			};
+
+			this.ws.onmessage = (event) => {
+				try {
+					const data = JSON.parse(event.data);
+
+					if (data.type === "new_conversation") {
+						const conversation = data.payload;
+						const exists = this.conversations.some(c => c.id === conversation.id);
+						if (!exists) {
+							this.conversations.unshift({
+								id: conversation.id,
+								type: conversation.type,
+								title: conversation.title,
+								photoUrl: conversation.photoUrl,
+								lastMessageAt: new Date().toISOString(),
+								lastMessageSnippet: null,
+								lastMessageIsPhoto: false
+							});
+						}
+					} else if (data.type === "new_message") {
+						const message = data.payload;
+						const convIndex = this.conversations.findIndex(c => c.id === message.conversationId);
+						if (convIndex !== -1) {
+							const conv = this.conversations[convIndex];
+							conv.lastMessageAt = message.createdAt;
+							conv.lastMessageSnippet = message.text || (message.photoUrl ? "📷 Photo" : "Message");
+							conv.lastMessageIsPhoto = !!message.photoUrl;
+							this.conversations.splice(convIndex, 1);
+							this.conversations.unshift(conv);
+						} else {
+							// New message in a conversation not yet in list, reload
+							this.loadConversations(true);
+						}
+					} else if (data.type === "conversation_updated") {
+						const payload = data.payload;
+						const idx = this.conversations.findIndex(c => c.id === payload.conversationId);
+						if (idx >= 0) {
+							this.conversations[idx].lastMessageSnippet = payload.lastMessageSnippet;
+							this.conversations[idx].lastMessageIsPhoto = payload.lastMessageIsPhoto;
+							this.conversations[idx].lastMessageAt = payload.lastMessageAt;
+							this.conversations = [...this.conversations];
+						} else {
+							this.loadConversations(true);
+						}
+					} else if (data.type === "profile_updated") {
+						const payload = data.payload;
+						// Update conversation titles and photos for direct chats with this user
+						let needsReload = false;
+						this.conversations.forEach(conv => {
+							if (conv.type === "direct") {
+								// For direct chats, the title is the other user's name
+								// We need to reload to check if this user is the other participant
+								needsReload = true;
+							}
+						});
+						if (needsReload) {
+							this.loadConversations(true);
+						}
+						// Also update the current user header if it's our own update
+						if (this.currentUser && payload.userId === this.currentUser.id) {
+							if (payload.name) this.currentUser.name = payload.name;
+							if (payload.photoUrl !== undefined) this.currentUser.photoUrl = payload.photoUrl;
+						}
+					} else if (data.type === "group_updated") {
+						const payload = data.payload;
+						const conv = this.conversations.find(c => c.id === payload.groupId);
+						if (conv) {
+							if (payload.name) conv.title = payload.name;
+							if (payload.photoUrl !== undefined) conv.photoUrl = payload.photoUrl;
+							this.conversations = [...this.conversations];
+						}
+					}
+				} catch (e) {
+					console.error("Error parsing WebSocket message:", e);
+				}
+			};
+
+			this.ws.onerror = (error) => {
+				console.error("❌ WebSocket error:", error);
+				this.wsConnected = false;
+			};
+
+			this.ws.onclose = () => {
+				this.wsConnected = false;
+				if (!this.refreshInterval) {
+					this.refreshInterval = setInterval(() => {
+						this.loadConversations(true);
+					}, 5000);
+				}
+				if (this.wsReconnectTimer) {
+					clearTimeout(this.wsReconnectTimer);
+				}
+				this.wsReconnectTimer = setTimeout(() => {
+					if (this.$route.name === "ConversationsView") {
+						this.connectWebSocket();
+					}
+				}, 3000);
+			};
 		},
 
 		async searchUsers() {
@@ -256,16 +381,37 @@ export default {
 				alert(e.response?.data?.message || "Failed to remove photo");
 			}
 		},
+
+
+
+		disconnectWebSocket() {
+			if (this.ws) {
+				this.ws.close();
+				this.ws = null;
+				this.wsConnected = false;
+			}
+			if (this.wsReconnectTimer) {
+				clearTimeout(this.wsReconnectTimer);
+				this.wsReconnectTimer = null;
+			}
+		},
 	},
 	mounted() {
 		this.loadCurrentUser();
 		this.loadConversations(); // Initial load with spinner
-		// Auto-refresh conversations every 5 seconds (silent)
+		
+		// Connect WebSocket for real-time updates
+		this.connectWebSocket();
+		
+		// Auto-refresh conversations every 5 seconds (silent) - fallback when WebSocket disconnected
 		this.refreshInterval = setInterval(() => {
 			this.loadConversations(true); // Silent refresh, no spinner
 		}, 5000);
 	},
 	beforeUnmount() {
+		// Clean up WebSocket connection
+		this.disconnectWebSocket();
+		
 		// Clean up interval when component is destroyed
 		if (this.refreshInterval) {
 			clearInterval(this.refreshInterval);

@@ -22,13 +22,16 @@ FROM alpine:latest
 
 RUN apk --no-cache add ca-certificates sqlite-libs
 
-WORKDIR /root/
+WORKDIR /app
 
 # Copy the binary from builder
 COPY --from=builder /app/webapi .
 
 # Make the binary executable
 RUN chmod +x webapi
+
+# Ensure data directory exists for SQLite database
+RUN mkdir -p /data
 
 # Expose port 3000 (as per API spec and default config)
 EXPOSE 3000

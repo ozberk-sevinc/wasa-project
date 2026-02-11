@@ -24,10 +24,35 @@ type WebSocketMessage struct {
 	Payload interface{} `json:"payload"` // The actual data
 }
 
+// WebSocketConnection wraps a WebSocket connection with a mutex for thread-safe writes
+type WebSocketConnection struct {
+	conn     *websocket.Conn
+	writeMux sync.Mutex
+}
+
+// WriteJSON writes a JSON message to the WebSocket connection (thread-safe)
+func (wsc *WebSocketConnection) WriteJSON(v interface{}) error {
+	wsc.writeMux.Lock()
+	defer wsc.writeMux.Unlock()
+	return wsc.conn.WriteJSON(v)
+}
+
+// WriteMessage writes a message to the WebSocket connection (thread-safe)
+func (wsc *WebSocketConnection) WriteMessage(messageType int, data []byte) error {
+	wsc.writeMux.Lock()
+	defer wsc.writeMux.Unlock()
+	return wsc.conn.WriteMessage(messageType, data)
+}
+
+// Close closes the WebSocket connection
+func (wsc *WebSocketConnection) Close() error {
+	return wsc.conn.Close()
+}
+
 // WebSocketHub manages all active WebSocket connections
 type WebSocketHub struct {
-	// Map of userID -> WebSocket connection
-	connections map[string]*websocket.Conn
+	// Map of userID -> WebSocket connection wrapper
+	connections map[string]*WebSocketConnection
 	mu          sync.RWMutex
 	logger      *logrus.Logger
 }
@@ -35,7 +60,7 @@ type WebSocketHub struct {
 // NewWebSocketHub creates a new WebSocket hub
 func NewWebSocketHub(logger *logrus.Logger) *WebSocketHub {
 	return &WebSocketHub{
-		connections: make(map[string]*websocket.Conn),
+		connections: make(map[string]*WebSocketConnection),
 		logger:      logger,
 	}
 }
@@ -50,7 +75,10 @@ func (h *WebSocketHub) Register(userID string, conn *websocket.Conn) {
 		existingConn.Close()
 	}
 
-	h.connections[userID] = conn
+	// Wrap connection with mutex for thread-safe writes
+	h.connections[userID] = &WebSocketConnection{
+		conn: conn,
+	}
 	h.logger.WithField("user_id", userID).Info("WebSocket connection registered")
 }
 
@@ -83,6 +111,7 @@ func (h *WebSocketHub) SendToUser(userID string, message WebSocketMessage) error
 		return err
 	}
 
+	// Use thread-safe WriteMessage method
 	err = conn.WriteMessage(websocket.TextMessage, data)
 	if err != nil {
 		h.logger.WithError(err).WithField("user_id", userID).Error("error sending WebSocket message")
@@ -105,7 +134,7 @@ func (h *WebSocketHub) BroadcastToUsers(userIDs []string, message WebSocketMessa
 func (rt *_router) handleWebSocket(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	// Try to get user from context (if authWrap was used)
 	user := GetUserFromContext(r.Context())
-	
+
 	// If not in context, try to get token from query parameter
 	if user == nil {
 		token := r.URL.Query().Get("token")
@@ -135,7 +164,7 @@ func (rt *_router) handleWebSocket(w http.ResponseWriter, r *http.Request, ps ht
 	// Handle incoming messages (ping/pong for keep-alive)
 	go func() {
 		defer rt.wsHub.Unregister(user.ID)
-		
+
 		for {
 			_, _, err := conn.ReadMessage()
 			if err != nil {

@@ -81,6 +81,7 @@ func run() error {
 
 	// Start Database
 	logger.Println("initializing database support")
+	// Remove journal mode from connection string - let PRAGMA handle it
 	dbconn, err := sql.Open("sqlite3", cfg.DB.Filename)
 	if err != nil {
 		logger.WithError(err).Error("error opening SQLite DB")
@@ -90,6 +91,13 @@ func run() error {
 		logger.Debug("database stopping")
 		_ = dbconn.Close()
 	}()
+
+	// Configure connection pool for SQLite
+	// SQLite supports multiple concurrent readers, only writers are serialized
+	dbconn.SetMaxOpenConns(5)
+	dbconn.SetMaxIdleConns(2)
+	dbconn.SetConnMaxLifetime(0)
+
 	db, err := database.New(dbconn)
 	if err != nil {
 		logger.WithError(err).Error("error creating AppDatabase")

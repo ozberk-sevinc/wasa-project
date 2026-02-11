@@ -1,147 +1,150 @@
 <template>
-	<div v-if="show" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5)">
-		<div class="modal-dialog modal-dialog-scrollable">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title">Group Info</h5>
-					<button type="button" class="btn-close" @click="close"></button>
-				</div>
-				<div class="modal-body">
-					<div v-if="loading" class="text-center py-4">
-						<div class="spinner-border text-primary" role="status">
-							<span class="visually-hidden">Loading...</span>
+	<div v-if="show" class="panel-overlay" @click.self="close">
+		<div class="panel-container">
+			<!-- Header -->
+			<div class="panel-header">
+				<h2>Group Info</h2>
+				<button class="btn-close-panel" @click="close">✕</button>
+			</div>
+
+			<!-- Loading -->
+			<div v-if="loading" class="panel-loading">
+				<div class="spinner-border"></div>
+			</div>
+
+			<!-- Error -->
+			<div v-else-if="error" class="panel-error">{{ error }}</div>
+
+			<!-- Content -->
+			<div v-else-if="group" class="panel-body">
+				<!-- Group Avatar -->
+				<div class="group-avatar-section">
+					<div class="group-avatar-large">
+						<img
+							v-if="group.photoUrl"
+							:src="getPhotoUrl(group.photoUrl)"
+							:alt="group.name"
+							class="avatar-img"
+						/>
+						<div v-else class="avatar-placeholder">
+							{{ getInitials(group.name) }}
 						</div>
 					</div>
+				</div>
 
-					<div v-else-if="error" class="alert alert-danger">{{ error }}</div>
+				<!-- Group Name -->
+				<div class="group-name-section">
+					<label class="field-label">Group Name</label>
+					<div v-if="!editingName" class="name-display">
+						<span class="name-value">{{ group.name }}</span>
+						<button class="btn-edit" @click="startEditName" title="Edit group name">
+							✏️
+						</button>
+					</div>
+					<div v-else class="name-edit">
+						<input
+							v-model="newGroupName"
+							type="text"
+							class="edit-input"
+							placeholder="Enter new group name"
+							@keyup.enter="saveGroupName"
+						/>
+						<div class="edit-actions">
+							<button class="btn-cancel" @click="cancelEditName">Cancel</button>
+							<button class="btn-save" @click="saveGroupName">Save</button>
+						</div>
+					</div>
+				</div>
 
-					<div v-else-if="group">
-						<!-- Group Photo -->
-						<div class="text-center mb-4">
-							<div class="position-relative d-inline-block">
+				<!-- Members -->
+				<div class="members-section">
+					<div class="members-header">
+						<span class="field-label">Members ({{ group.members.length }})</span>
+						<button class="btn-add-member" @click="showAddMember = true">+ Add</button>
+					</div>
+
+					<div class="members-list">
+						<div
+							v-for="member in group.members"
+							:key="member.id"
+							class="member-item"
+						>
+							<div class="member-avatar">
 								<img
-								:src="getPhotoUrl(group.photoUrl) || 'https://via.placeholder.com/120?text=Group'"
-							</div>
-						</div>
-
-						<!-- Group Name -->
-						<div class="mb-4">
-							<div class="d-flex align-items-center justify-content-between">
-								<div class="flex-grow-1">
-									<label class="form-label fw-bold mb-1">Group Name</label>
-									<div v-if="!editingName" class="d-flex align-items-center">
-										<h5 class="mb-0 me-2">{{ group.name }}</h5>
-										<button
-											v-if="isCreator"
-											class="btn btn-sm btn-outline-secondary"
-											@click="startEditName"
-											title="Edit group name"
-										>
-											✏️
-										</button>
-									</div>
-									<div v-else class="input-group">
-										<input
-											v-model="newGroupName"
-											type="text"
-											class="form-control"
-											placeholder="Enter new group name"
-											@keyup.enter="saveGroupName"
-										/>
-										<button class="btn btn-success" @click="saveGroupName">Save</button>
-										<button class="btn btn-secondary" @click="cancelEditName">Cancel</button>
-									</div>
+									v-if="member.photoUrl"
+									:src="getPhotoUrl(member.photoUrl)"
+									:alt="member.name"
+									class="avatar-img-sm"
+								/>
+								<div v-else class="avatar-placeholder-sm">
+									{{ getInitials(member.name) }}
 								</div>
 							</div>
-						</div>
-
-						<!-- Members Section -->
-						<div class="mb-4">
-							<div class="d-flex justify-content-between align-items-center mb-3">
-								<h6 class="mb-0">Members ({{ group.members.length }})</h6>
-								<button class="btn btn-sm btn-primary" @click="showAddMember = true">
-									➕ Add Member
-								</button>
+							<div class="member-info">
+								<span class="member-name">{{ member.displayName || member.name }}</span>
+								<span class="member-username">@{{ member.name }}</span>
 							</div>
-
-							<div class="list-group">
-								<div
-									v-for="member in group.members"
-									:key="member.id"
-									class="list-group-item d-flex align-items-center"
-								>
-									<img
-										:src="member.photoUrl || 'https://via.placeholder.com/40?text=U'"
-										class="rounded-circle me-3"
-										style="width: 40px; height: 40px; object-fit: cover"
-										alt="Member photo"
-									/>
-									<div class="flex-grow-1">
-										<div class="fw-bold">{{ member.displayName || member.name }}</div>
-										<small class="text-muted">@{{ member.name }}</small>
-									</div>
-									<span v-if="member.id === group.createdBy" class="badge bg-info">Creator</span>
-								</div>
-							</div>
-						</div>
-
-						<!-- Leave Group Button -->
-						<div class="d-grid">
-							<button class="btn btn-danger" @click="confirmLeaveGroup">
-								🚪 Leave Group
-							</button>
+							<span v-if="member.id === group.createdBy" class="creator-badge">Creator</span>
 						</div>
 					</div>
 				</div>
+
+				<!-- Leave Group -->
+				<button class="btn-leave" @click="confirmLeaveGroup">
+					🚪 Leave Group
+				</button>
 			</div>
 		</div>
 
-		<!-- Add Member Modal -->
-		<div v-if="showAddMember" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.7); z-index: 1060">
-			<div class="modal-dialog">
-				<div class="modal-content">
-					<div class="modal-header">
-						<h5 class="modal-title">Add Member</h5>
-						<button type="button" class="btn-close" @click="showAddMember = false"></button>
+		<!-- Add Member Sub-Modal -->
+		<div v-if="showAddMember" class="panel-overlay sub-modal" @click.self="showAddMember = false">
+			<div class="panel-container panel-small">
+				<div class="panel-header">
+					<h2>Add Member</h2>
+					<button class="btn-close-panel" @click="showAddMember = false">✕</button>
+				</div>
+				<div class="panel-body">
+					<input
+						v-model="memberSearchQuery"
+						type="text"
+						class="edit-input"
+						placeholder="Search users..."
+						@input="searchUsers"
+					/>
+
+					<div v-if="searchingUsers" class="panel-loading small">
+						<div class="spinner-border"></div>
 					</div>
-					<div class="modal-body">
-						<input
-							v-model="memberSearchQuery"
-							type="text"
-							class="form-control mb-3"
-							placeholder="Search users..."
-							@input="searchUsers"
-						/>
 
-						<div v-if="searchingUsers" class="text-center py-3">
-							<div class="spinner-border spinner-border-sm" role="status"></div>
-						</div>
-
-						<div v-else-if="searchResults.length > 0" class="list-group">
-							<button
-								v-for="user in searchResults"
-								:key="user.id"
-								class="list-group-item list-group-item-action d-flex align-items-center"
-								@click="addMember(user.id)"
-								:disabled="isAlreadyMember(user.id)"
-							>
+					<div v-else-if="searchResults.length > 0" class="members-list">
+						<div
+							v-for="user in searchResults"
+							:key="user.id"
+							class="member-item clickable"
+							:class="{ disabled: isAlreadyMember(user.id) }"
+							@click="!isAlreadyMember(user.id) && addMember(user.id)"
+						>
+							<div class="member-avatar">
 								<img
-								:src="getPhotoUrl(user.photoUrl) || 'https://via.placeholder.com/40?text=U'"
-									class="rounded-circle me-3"
-									style="width: 40px; height: 40px; object-fit: cover"
-									alt="User photo"
+									v-if="user.photoUrl"
+									:src="getPhotoUrl(user.photoUrl)"
+									:alt="user.name"
+									class="avatar-img-sm"
 								/>
-								<div class="flex-grow-1">
-									<div class="fw-bold">{{ user.displayName || user.name }}</div>
-									<small class="text-muted">@{{ user.name }}</small>
+								<div v-else class="avatar-placeholder-sm">
+									{{ getInitials(user.name) }}
 								</div>
-								<span v-if="isAlreadyMember(user.id)" class="badge bg-secondary">Already member</span>
-							</button>
+							</div>
+							<div class="member-info">
+								<span class="member-name">{{ user.displayName || user.name }}</span>
+								<span class="member-username">@{{ user.name }}</span>
+							</div>
+							<span v-if="isAlreadyMember(user.id)" class="already-badge">Added</span>
 						</div>
+					</div>
 
-						<div v-else-if="memberSearchQuery" class="text-muted text-center py-3">
-							No users found
-						</div>
+					<div v-else-if="memberSearchQuery" class="empty-text">
+						No users found
 					</div>
 				</div>
 			</div>
@@ -211,6 +214,13 @@ export default {
 			} finally {
 				this.loading = false;
 			}
+		},
+
+		getInitials(name) {
+			if (!name) return "?";
+			const words = name.trim().split(/\s+/);
+			if (words.length === 1) return words[0].substring(0, 2).toUpperCase();
+			return (words[0][0] + words[1][0]).toUpperCase();
 		},
 
 		startEditName() {
@@ -303,7 +313,407 @@ export default {
 </script>
 
 <style scoped>
-.modal.show {
+/* Overlay */
+.panel-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.7);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 16px;
+	z-index: 1000;
+}
+
+.panel-overlay.sub-modal {
+	z-index: 1050;
+}
+
+/* Container */
+.panel-container {
+	background: #252435;
+	border-radius: 12px;
+	width: 100%;
+	max-width: 400px;
+	max-height: 85vh;
+	display: flex;
+	flex-direction: column;
+	border: 1px solid #3d3a52;
+	overflow: hidden;
+}
+
+.panel-small {
+	max-width: 360px;
+}
+
+/* Header */
+.panel-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 16px 20px;
+	border-bottom: 1px solid #3d3a52;
+}
+
+.panel-header h2 {
+	margin: 0;
+	font-size: 1.15rem;
+	font-weight: 600;
+	color: #e2e8f0;
+}
+
+.btn-close-panel {
+	background: none;
+	border: none;
+	color: #94a3b8;
+	font-size: 1.1rem;
+	cursor: pointer;
+	padding: 4px 8px;
+	border-radius: 6px;
+	line-height: 1;
+}
+
+.btn-close-panel:hover {
+	background: #3d3a52;
+	color: #e2e8f0;
+}
+
+/* Body */
+.panel-body {
+	padding: 20px;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+/* Loading */
+.panel-loading {
+	display: flex;
+	justify-content: center;
+	padding: 40px 20px;
+}
+
+.panel-loading.small {
+	padding: 20px;
+}
+
+.spinner-border {
+	color: #8b5cf6;
+	width: 32px;
+	height: 32px;
+}
+
+/* Error */
+.panel-error {
+	margin: 20px;
+	padding: 12px 16px;
+	background: rgba(214, 48, 49, 0.15);
+	border: 1px solid #d63031;
+	border-radius: 8px;
+	color: #ff7675;
+	font-size: 0.9rem;
+}
+
+/* Group Avatar */
+.group-avatar-section {
+	display: flex;
+	justify-content: center;
+	margin-bottom: 20px;
+}
+
+.group-avatar-large {
+	width: 96px;
+	height: 96px;
+	border-radius: 50%;
+	overflow: hidden;
+	border: 3px solid #3d3a52;
+}
+
+.avatar-img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
 	display: block;
+}
+
+.avatar-placeholder {
+	width: 100%;
+	height: 100%;
+	background: #8b5cf6;
+	color: #1a1d29;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: 700;
+	font-size: 2rem;
+}
+
+/* Group Name */
+.group-name-section {
+	margin-bottom: 24px;
+}
+
+.field-label {
+	display: block;
+	font-size: 0.78rem;
+	color: #64748b;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	margin-bottom: 6px;
+	font-weight: 500;
+}
+
+.name-display {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.name-value {
+	font-size: 1.15rem;
+	font-weight: 600;
+	color: #e2e8f0;
+}
+
+.btn-edit {
+	background: none;
+	border: none;
+	cursor: pointer;
+	font-size: 0.9rem;
+	padding: 4px 8px;
+	border-radius: 6px;
+	opacity: 0.6;
+	transition: opacity 0.15s;
+}
+
+.btn-edit:hover {
+	opacity: 1;
+	background: #3d3a52;
+}
+
+.name-edit {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.edit-input {
+	background: #1a1d29;
+	border: 1px solid #3d3a52;
+	color: #e2e8f0;
+	border-radius: 8px;
+	padding: 10px 14px;
+	font-size: 0.95rem;
+	outline: none;
+	width: 100%;
+}
+
+.edit-input:focus {
+	border-color: #8b5cf6;
+}
+
+.edit-input::placeholder {
+	color: #4a4860;
+}
+
+.edit-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+}
+
+.btn-save {
+	background: #8b5cf6;
+	color: #fff;
+	border: none;
+	padding: 7px 18px;
+	border-radius: 6px;
+	font-size: 0.85rem;
+	font-weight: 500;
+	cursor: pointer;
+}
+
+.btn-save:hover {
+	background: #7c3aed;
+}
+
+.btn-cancel {
+	background: #3d3a52;
+	color: #cbd5e1;
+	border: none;
+	padding: 7px 18px;
+	border-radius: 6px;
+	font-size: 0.85rem;
+	cursor: pointer;
+}
+
+.btn-cancel:hover {
+	background: #4d4763;
+	color: #e2e8f0;
+}
+
+/* Members */
+.members-section {
+	margin-bottom: 24px;
+}
+
+.members-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 12px;
+}
+
+.btn-add-member {
+	background: #8b5cf6;
+	color: #fff;
+	border: none;
+	padding: 5px 14px;
+	border-radius: 6px;
+	font-size: 0.8rem;
+	font-weight: 500;
+	cursor: pointer;
+}
+
+.btn-add-member:hover {
+	background: #7c3aed;
+}
+
+.members-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin-top: 8px;
+}
+
+.member-item {
+	display: flex;
+	align-items: center;
+	padding: 10px 12px;
+	border-radius: 8px;
+	gap: 12px;
+	transition: background 0.15s;
+}
+
+.member-item:hover {
+	background: #1a1d29;
+}
+
+.member-item.clickable {
+	cursor: pointer;
+}
+
+.member-item.disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.member-avatar {
+	flex-shrink: 0;
+}
+
+.avatar-img-sm {
+	width: 40px;
+	height: 40px;
+	border-radius: 50%;
+	object-fit: cover;
+	display: block;
+}
+
+.avatar-placeholder-sm {
+	width: 40px;
+	height: 40px;
+	border-radius: 50%;
+	background: #8b5cf6;
+	color: #1a1d29;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: 600;
+	font-size: 0.85rem;
+}
+
+.member-info {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.member-name {
+	font-size: 0.95rem;
+	font-weight: 500;
+	color: #e2e8f0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.member-username {
+	font-size: 0.8rem;
+	color: #64748b;
+}
+
+.creator-badge {
+	font-size: 0.7rem;
+	background: #8b5cf6;
+	color: #fff;
+	padding: 3px 10px;
+	border-radius: 12px;
+	flex-shrink: 0;
+	font-weight: 500;
+}
+
+.already-badge {
+	font-size: 0.7rem;
+	background: #3d3a52;
+	color: #94a3b8;
+	padding: 3px 10px;
+	border-radius: 12px;
+	flex-shrink: 0;
+}
+
+/* Leave Button */
+.btn-leave {
+	width: 100%;
+	background: rgba(214, 48, 49, 0.15);
+	color: #ff7675;
+	border: 1px solid rgba(214, 48, 49, 0.3);
+	padding: 12px;
+	border-radius: 8px;
+	font-size: 0.95rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background 0.15s;
+}
+
+.btn-leave:hover {
+	background: rgba(214, 48, 49, 0.25);
+}
+
+/* Empty text */
+.empty-text {
+	text-align: center;
+	color: #64748b;
+	padding: 20px;
+	font-size: 0.9rem;
+}
+
+@media (max-width: 400px) {
+	.panel-container {
+		max-width: 100%;
+		max-height: 90vh;
+	}
+
+	.group-avatar-large {
+		width: 80px;
+		height: 80px;
+	}
+
+	.avatar-placeholder {
+		font-size: 1.6rem;
+	}
 }
 </style>

@@ -36,11 +36,12 @@ export default {
 			showForwardDialog: false,
 			forwardingMessage: null,
 			conversations: [],
-			// Auto-refresh
+			// Auto-refresh (fallback when WebSocket disconnected)
 			refreshInterval: null,
-			// WebSocket
+			// WebSocket for real-time updates
 			ws: null,
 			wsConnected: false,
+			wsReconnectTimer: null,
 			// Context menu
 			contextMenuMessageId: null,
 			contextMenuTimer: null,
@@ -58,80 +59,6 @@ export default {
 		},
 	},
 	methods: {
-		connectWebSocket() {
-			const token = localStorage.getItem("wasatext_token");
-			if (!token) {
-				console.warn("No token found for WebSocket connection");
-				return;
-			}
-
-			// Use ws:// for http and wss:// for https
-			const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-			const wsUrl = `${protocol}//localhost:3000/ws?token=${encodeURIComponent(token)}`;
-			
-			console.log("Connecting to WebSocket:", wsUrl.replace(/token=[^&]+/, "token=***"));
-
-			this.ws = new WebSocket(wsUrl);
-
-			this.ws.onopen = () => {
-				console.log("WebSocket connected successfully");
-				this.wsConnected = true;
-			};
-
-			this.ws.onmessage = (event) => {
-				try {
-					const data = JSON.parse(event.data);
-					
-					if (data.type === "new_message") {
-						const message = data.payload;
-						// Only add message if it's for the current conversation
-						if (message.conversationId === this.conversationId) {
-							// Check if message already exists (avoid duplicates)
-							const exists = this.messages.some(m => m.id === message.id);
-							if (!exists) {
-								this.messages.push(message);
-								this.$nextTick(() => {
-									const container = this.$refs.messagesContainer;
-									if (container) {
-										const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-										if (isAtBottom) {
-											this.scrollToBottom();
-										}
-									}
-								});
-							}
-						}
-					}
-				} catch (e) {
-					console.error("Error parsing WebSocket message:", e);
-				}
-			};
-
-			this.ws.onerror = (error) => {
-				console.error("WebSocket error:", error);
-				this.wsConnected = false;
-			};
-
-			this.ws.onclose = () => {
-				console.log("WebSocket disconnected");
-				this.wsConnected = false;
-				// Attempt to reconnect after 3 seconds
-				setTimeout(() => {
-					if (this.$route.name === "ChatView") {
-						this.connectWebSocket();
-					}
-				}, 3000);
-			};
-		},
-
-		disconnectWebSocket() {
-			if (this.ws) {
-				this.ws.close();
-				this.ws = null;
-				this.wsConnected = false;
-			}
-		},
-
 		async loadConversation(silent = false) {
 			// Only show loading spinner on initial load, not on auto-refresh
 			if (!silent) {
@@ -180,6 +107,178 @@ export default {
 			}
 		},
 
+		connectWebSocket() {
+			const token = localStorage.getItem("wasatext_token");
+			if (!token) {
+				console.warn("No token for WebSocket connection");
+				return;
+			}
+
+			const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+			const wsUrl = `${protocol}//${window.location.host}/api/ws?token=${encodeURIComponent(token)}`;
+			
+			console.log("🔌 Connecting to WebSocket...");
+			this.ws = new WebSocket(wsUrl);
+
+			this.ws.onopen = () => {
+				console.log("✅ WebSocket connected - real-time messaging enabled");
+				this.wsConnected = true;
+				// Stop polling when WebSocket is active
+				if (this.refreshInterval) {
+					clearInterval(this.refreshInterval);
+					this.refreshInterval = null;
+				}
+			};
+
+			this.ws.onmessage = (event) => {
+				try {
+					const data = JSON.parse(event.data);
+					
+					if (data.type === "new_message") {
+						const message = data.payload;
+						// Only add if it's for the current conversation
+						if (message.conversationId === this.conversationId) {
+							// Check if message already exists
+							const exists = this.messages.some(m => m.id === message.id);
+							if (!exists) {
+								console.log("📨 Real-time message received:", message.id);
+								this.messages.push(message);
+								this.$nextTick(() => {
+									const container = this.$refs.messagesContainer;
+									if (container) {
+										const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+										if (isAtBottom) {
+											this.scrollToBottom();
+										}
+									}
+								});
+							}
+						}
+					} else if (data.type === "messages_read") {
+						// Another user has read messages in this conversation
+						const payload = data.payload;
+						if (payload.conversationId === this.conversationId) {
+							console.log("✓✓ Messages read by user:", payload.readByUserId);
+							// Update only the messages that are now fully read by everyone
+							const fullyReadIds = payload.fullyReadMessageIds || [];
+							this.messages.forEach(msg => {
+								if (fullyReadIds.includes(msg.id) && msg.status !== "read") {
+									msg.status = "read";
+									console.log("📬 Message", msg.id, "now fully read by all participants");
+								}
+							});
+						}
+					} else if (data.type === "profile_updated") {
+						// Another user updated their profile name or photo
+						const payload = data.payload;
+						// Update name and photo in all messages from this user
+						this.messages.forEach(msg => {
+							if (msg.sender?.id === payload.userId) {
+								if (payload.name) msg.sender.name = payload.name;
+								if (payload.photoUrl !== undefined) msg.sender.photoUrl = payload.photoUrl;
+							}
+							// Also update reactions from this user
+							if (msg.reactions) {
+								msg.reactions.forEach(r => {
+									if (r.user?.id === payload.userId) {
+										if (payload.name) r.user.name = payload.name;
+										if (payload.photoUrl !== undefined) r.user.photoUrl = payload.photoUrl;
+									}
+								});
+							}
+						});
+						// Update conversation participants
+						if (this.conversation?.participants) {
+							this.conversation.participants.forEach(p => {
+								if (p.id === payload.userId) {
+									if (payload.name) p.name = payload.name;
+									if (payload.photoUrl !== undefined) p.photoUrl = payload.photoUrl;
+								}
+							});
+						}
+						// Update conversation title/photo for direct chats
+						if (this.conversation?.type === "direct") {
+							const otherParticipant = this.conversation.participants?.find(p => p.id !== this.currentUser?.id);
+							if (otherParticipant?.id === payload.userId) {
+								if (payload.name) this.conversation.title = payload.name;
+								if (payload.photoUrl !== undefined) this.conversation.photoUrl = payload.photoUrl;
+							}
+						}
+					} else if (data.type === "reaction_added") {
+						const payload = data.payload;
+						if (payload.conversationId === this.conversationId) {
+							const msg = this.messages.find(m => m.id === payload.messageId);
+							if (msg) {
+								msg.reactions = msg.reactions || [];
+								// Remove existing reaction from same user (they can only have one)
+								const reactUserId = payload.reaction?.user?.id;
+								if (reactUserId) {
+									msg.reactions = msg.reactions.filter(r => r.user?.id !== reactUserId);
+								}
+								msg.reactions.push(payload.reaction);
+							}
+						}
+					} else if (data.type === "reaction_removed") {
+						const payload = data.payload;
+						if (payload.conversationId === this.conversationId) {
+							const msg = this.messages.find(m => m.id === payload.messageId);
+							if (msg && msg.reactions) {
+								msg.reactions = msg.reactions.filter(r => r.id !== payload.reactionId);
+							}
+						}
+					} else if (data.type === "group_updated") {
+						const payload = data.payload;
+						if (this.conversation && this.conversationId === payload.groupId) {
+							if (payload.name) this.conversation.title = payload.name;
+							if (payload.photoUrl !== undefined) this.conversation.photoUrl = payload.photoUrl;
+						}
+					}
+				} catch (e) {
+					console.error("Error parsing WebSocket message:", e);
+				}
+			};
+
+			this.ws.onerror = (error) => {
+				console.error("❌ WebSocket error:", error);
+				this.wsConnected = false;
+			};
+
+			this.ws.onclose = () => {
+				console.log("🔌 WebSocket disconnected - falling back to polling");
+				this.wsConnected = false;
+				
+				// Start polling fallback if not already running
+				if (!this.refreshInterval) {
+					this.refreshInterval = setInterval(() => {
+						this.loadConversation(true);
+					}, 5000);
+				}
+				
+				// Attempt to reconnect after 3 seconds
+				if (this.wsReconnectTimer) {
+					clearTimeout(this.wsReconnectTimer);
+				}
+				this.wsReconnectTimer = setTimeout(() => {
+					if (this.$route.name === "ChatView") {
+						console.log("🔄 Attempting WebSocket reconnect...");
+						this.connectWebSocket();
+					}
+				}, 3000);
+			};
+		},
+
+		disconnectWebSocket() {
+			if (this.ws) {
+				this.ws.close();
+				this.ws = null;
+				this.wsConnected = false;
+			}
+			if (this.wsReconnectTimer) {
+				clearTimeout(this.wsReconnectTimer);
+				this.wsReconnectTimer = null;
+			}
+		},
+
 		async sendMessage() {
 			if ((!this.newMessage.trim() && !this.pendingPhotoUrl) || this.sending) return;
 
@@ -216,11 +315,12 @@ export default {
 				}
 
 				const response = await messageAPI.send(this.conversationId, payload);
-				this.messages.push(response.data);
+				// Don't manually add message - let WebSocket handle it for consistency
+				// this.messages.push(response.data);
 				this.newMessage = "";
 				this.pendingPhotoUrl = null;
 				this.replyingTo = null;
-				this.$nextTick(() => this.scrollToBottom());
+				// WebSocket will add the message and scroll automatically
 			} catch (e) {
 				alert(e.response?.data?.message || "Failed to send message");
 			} finally {
@@ -284,9 +384,10 @@ export default {
 						payload.replyToMessageId = this.replyingTo.id;
 					}
 					const response = await messageAPI.send(this.conversationId, payload);
-					this.messages.push(response.data);
+					// Don't manually add message - let WebSocket handle it
+					// this.messages.push(response.data);
 					this.replyingTo = null;
-					this.$nextTick(() => this.scrollToBottom());
+					// WebSocket will scroll automatically
 				} else {
 					// Document/file - send immediately
 					const fakeUrl = URL.createObjectURL(file);
@@ -299,9 +400,10 @@ export default {
 						payload.replyToMessageId = this.replyingTo.id;
 					}
 					const response = await messageAPI.send(this.conversationId, payload);
-					this.messages.push(response.data);
+					// Don't manually add message - let WebSocket handle it
+					// this.messages.push(response.data);
 					this.replyingTo = null;
-					this.$nextTick(() => this.scrollToBottom());
+					// WebSocket will scroll automatically
 				}
 			} catch (e) {
 				alert(e.response?.data?.message || "Failed to send file");
@@ -496,26 +598,21 @@ export default {
 				case "sent":
 					return "✓";
 				case "received":
-					return "✓✓";
-				case "read":
-					return "✓✓✓";
-				default:
-					return "";
-			}
-		},
+				return "✓";
+			case "read":
+				return "✓✓";
+			default:
+				return "";
+		}
+	},
 
-		getStatusClass(status) {
-			return status === "read" ? "status-read" : "status-default";
-		},
+getStatusClass(status) {
+	return status === "read" ? "status-read" : "status-default";
+},
 
-		getRepliedMessage(messageId) {
-			return this.messages.find((m) => m.id === messageId);
-		},
-
-		getInitials(name) {
-			return name ? name.substring(0, 2).toUpperCase() : "??";
-		},
-
+getRepliedMessage(messageId) {
+	return this.messages.find((m) => m.id === messageId);
+},
 		getPhotoUrl(url) {
 			if (!url) return null;
 			// If already absolute, return as is
@@ -617,6 +714,28 @@ export default {
 				this.contextMenuMessageId = null;
 			}, 2000);
 		},
+
+		getInitials(name) {
+			if (!name) return "?";
+			const words = name.trim().split(/\s+/);
+			if (words.length === 1) {
+				return words[0].substring(0, 2).toUpperCase();
+			}
+			return (words[0][0] + words[1][0]).toUpperCase();
+		},
+
+		scrollToMessage(messageId) {
+			// Find the message element and scroll to it
+			const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+			if (messageElement) {
+				messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
+				// Highlight briefly
+				messageElement.style.backgroundColor = "rgba(139, 92, 246, 0.2)";
+				setTimeout(() => {
+					messageElement.style.backgroundColor = "";
+				}, 1500);
+			}
+		},
 	},
 	mounted() {
 		const userData = localStorage.getItem("wasatext_user");
@@ -630,21 +749,22 @@ export default {
 		console.log("Loading conversation ID:", this.conversationId);
 		this.loadConversation(); // Initial load with spinner
 		
-		// Connect to WebSocket for real-time updates
+		// Connect WebSocket for real-time messaging
 		this.connectWebSocket();
 		
-		// Auto-refresh messages every 30 seconds as fallback (in case WebSocket fails)
+		// Auto-refresh messages every 5 seconds as fallback (disabled when WebSocket is active)
 		this.refreshInterval = setInterval(() => {
 			this.loadConversation(true); // Silent refresh, no spinner or scroll jump
-		}, 30000);
+		}, 5000);
 	},
 	beforeUnmount() {
+		// Clean up WebSocket connection
+		this.disconnectWebSocket();
+		
 		// Clean up interval when component is destroyed
 		if (this.refreshInterval) {
 			clearInterval(this.refreshInterval);
 		}
-		// Disconnect WebSocket
-		this.disconnectWebSocket();
 	},
 	watch: {
 		conversationId() {
@@ -652,12 +772,15 @@ export default {
 			if (this.refreshInterval) {
 				clearInterval(this.refreshInterval);
 			}
+			
+			// Disconnect and reconnect WebSocket for new conversation
+			this.disconnectWebSocket();
+			this.connectWebSocket();
+			
 			this.loadConversation(); // Show spinner when switching conversations
 			this.refreshInterval = setInterval(() => {
-				this.loadConversation(true); // Silent refresh
-			}, 30000);
-			
-			// WebSocket connection stays active across conversations
+				this.loadConversation(true); // Silent refresh every 5 seconds
+			}, 5000);
 		},
 	},
 };
@@ -726,6 +849,7 @@ export default {
 				<div
 					class="message-wrapper"
 					:class="{ 'own-message': isOwnMessage(message) }"
+					:data-message-id="message.id"
 				>
 				<!-- Sender avatar (for messages from others) -->
 				<div v-if="!isOwnMessage(message)" class="message-avatar">

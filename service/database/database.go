@@ -36,6 +36,13 @@ import (
 	"fmt"
 )
 
+// Message status constants
+const (
+	StatusSent     = "sent"
+	StatusReceived = "received"
+	StatusRead     = "read"
+)
+
 // User represents a WASAText user
 type User struct {
 	ID          string
@@ -145,6 +152,77 @@ type appdbimpl struct {
 	c *sql.DB
 }
 
+// SQL schema definitions
+const (
+	createUsersTable = `
+		CREATE TABLE IF NOT EXISTS users (
+			id TEXT PRIMARY KEY,
+			name TEXT UNIQUE NOT NULL,
+			display_name TEXT,
+			photo_url TEXT
+		)`
+
+	createConversationsTable = `
+		CREATE TABLE IF NOT EXISTS conversations (
+			id TEXT PRIMARY KEY,
+			type TEXT NOT NULL CHECK (type IN ('direct', 'group')),
+			name TEXT,
+			photo_url TEXT,
+			created_by TEXT,
+			FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+		)`
+
+	createConversationParticipantsTable = `
+		CREATE TABLE IF NOT EXISTS conversation_participants (
+			conversation_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			PRIMARY KEY (conversation_id, user_id),
+			FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`
+
+	createMessagesTable = `
+		CREATE TABLE IF NOT EXISTS messages (
+			id TEXT PRIMARY KEY,
+			conversation_id TEXT NOT NULL,
+			sender_id TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			content_type TEXT NOT NULL CHECK (content_type IN ('text', 'photo', 'audio', 'document', 'file')),
+			text TEXT,
+			photo_url TEXT,
+			file_url TEXT,
+			file_name TEXT,
+			replied_to_message_id TEXT,
+			status TEXT NOT NULL DEFAULT 'sent' CHECK (status IN ('sent', 'received', 'read')),
+			is_forwarded INTEGER DEFAULT 0,
+			FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+			FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (replied_to_message_id) REFERENCES messages(id) ON DELETE SET NULL
+		)`
+
+	createReactionsTable = `
+		CREATE TABLE IF NOT EXISTS reactions (
+			id TEXT PRIMARY KEY,
+			message_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			emoji TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			UNIQUE(message_id, user_id)
+		)`
+
+	createMessageReadsTable = `
+		CREATE TABLE IF NOT EXISTS message_reads (
+			message_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			read_at TEXT NOT NULL,
+			PRIMARY KEY (message_id, user_id),
+			FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`
+)
+
 // New returns a new instance of AppDatabase based on the SQLite connection `db`.
 // `db` is required - an error will be returned if `db` is `nil`.
 func New(db *sql.DB) (AppDatabase, error) {
@@ -152,15 +230,13 @@ func New(db *sql.DB) (AppDatabase, error) {
 		return nil, errors.New("database is required when building a AppDatabase")
 	}
 
-	// Enable foreign keys
-	_, err := db.Exec("PRAGMA foreign_keys = ON")
-	if err != nil {
-		return nil, fmt.Errorf("error enabling foreign keys: %w", err)
+	// Configure SQLite pragmas
+	if err := configureSQLite(db); err != nil {
+		return nil, err
 	}
 
 	// Create tables if they don't exist
-	err = createTables(db)
-	if err != nil {
+	if err := createTables(db); err != nil {
 		return nil, err
 	}
 
@@ -169,131 +245,68 @@ func New(db *sql.DB) (AppDatabase, error) {
 	}, nil
 }
 
+// configureSQLite applies optimal SQLite settings
+func configureSQLite(db *sql.DB) error {
+	pragmas := map[string]string{
+		"foreign_keys":     "ON",     // Enable foreign key constraints
+		"journal_mode":     "WAL",    // Write-Ahead Logging for concurrent access
+		"busy_timeout":     "30000",  // Wait 30 seconds on locked database
+		"synchronous":      "NORMAL", // Balanced safety/performance
+		"cache_size":       "-10000", // 10MB cache (negative = KB)
+		"temp_store":       "memory", // Store temp tables in memory
+		"mmap_size":        "0",      // Disable memory-mapped I/O
+		"locking_mode":     "NORMAL", // Normal locking (not EXCLUSIVE)
+		"read_uncommitted": "1",      // Allow reading uncommitted data for better concurrency
+	}
+
+	for key, value := range pragmas {
+		query := fmt.Sprintf("PRAGMA %s = %s", key, value)
+		if _, err := db.Exec(query); err != nil {
+			return fmt.Errorf("error executing %s: %w", query, err)
+		}
+	}
+
+	return nil
+}
+
+// createTables creates all necessary database tables and indexes
 func createTables(db *sql.DB) error {
-	// Users table
-	_, err := db.Exec(`
-        CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            name TEXT UNIQUE NOT NULL,
-            display_name TEXT,
-            photo_url TEXT
-        )
-    `)
-	if err != nil {
-		return fmt.Errorf("error creating users table: %w", err)
+	// Table definitions
+	tables := []struct {
+		name   string
+		schema string
+	}{
+		{"users", createUsersTable},
+		{"conversations", createConversationsTable},
+		{"conversation_participants", createConversationParticipantsTable},
+		{"messages", createMessagesTable},
+		{"reactions", createReactionsTable},
+		{"message_reads", createMessageReadsTable},
 	}
 
-	// Conversations table (both direct and group)
-	_, err = db.Exec(`
-        CREATE TABLE IF NOT EXISTS conversations (
-            id TEXT PRIMARY KEY,
-            type TEXT NOT NULL CHECK (type IN ('direct', 'group')),
-            name TEXT,
-            photo_url TEXT,
-            created_by TEXT,
-            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
-        )
-    `)
-	if err != nil {
-		return fmt.Errorf("error creating conversations table: %w", err)
+	// Create tables
+	for _, table := range tables {
+		if _, err := db.Exec(table.schema); err != nil {
+			return fmt.Errorf("error creating %s table: %w", table.name, err)
+		}
 	}
 
-	// Conversation participants (who is in which conversation)
-	_, err = db.Exec(`
-        CREATE TABLE IF NOT EXISTS conversation_participants (
-            conversation_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            PRIMARY KEY (conversation_id, user_id),
-            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-    `)
-	if err != nil {
-		return fmt.Errorf("error creating conversation_participants table: %w", err)
+	// Create indexes
+	indexes := []struct {
+		name  string
+		query string
+	}{
+		{"idx_messages_conversation", "CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)"},
+		{"idx_messages_created_at", "CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)"},
+		{"idx_reactions_message", "CREATE INDEX IF NOT EXISTS idx_reactions_message ON reactions(message_id)"},
+		{"idx_participants_user", "CREATE INDEX IF NOT EXISTS idx_participants_user ON conversation_participants(user_id)"},
+		{"idx_users_name", "CREATE INDEX IF NOT EXISTS idx_users_name ON users(name)"},
 	}
 
-	// Messages table
-	_, err = db.Exec(`
-        CREATE TABLE IF NOT EXISTS messages (
-            id TEXT PRIMARY KEY,
-            conversation_id TEXT NOT NULL,
-            sender_id TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            content_type TEXT NOT NULL CHECK (content_type IN ('text', 'photo', 'audio', 'document', 'file')),
-            text TEXT,
-            photo_url TEXT,
-            file_url TEXT,
-            file_name TEXT,
-            replied_to_message_id TEXT,
-            status TEXT NOT NULL DEFAULT 'sent' CHECK (status IN ('sent', 'received', 'read')),
-            is_forwarded INTEGER DEFAULT 0,
-            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
-            FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (replied_to_message_id) REFERENCES messages(id) ON DELETE SET NULL
-        )
-    `)
-	if err != nil {
-		return fmt.Errorf("error creating messages table: %w", err)
-	}
-
-	// Reactions table
-	_, err = db.Exec(`
-        CREATE TABLE IF NOT EXISTS reactions (
-            id TEXT PRIMARY KEY,
-            message_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            emoji TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-            UNIQUE(message_id, user_id)
-        )
-    `)
-	if err != nil {
-		return fmt.Errorf("error creating reactions table: %w", err)
-	}
-
-	// Message reads table (for tracking who has read each message in groups)
-	_, err = db.Exec(`
-        CREATE TABLE IF NOT EXISTS message_reads (
-            message_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            read_at TEXT NOT NULL,
-            PRIMARY KEY (message_id, user_id),
-            FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-    `)
-	if err != nil {
-		return fmt.Errorf("error creating message_reads table: %w", err)
-	}
-
-	// Indexes for performance
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)`)
-	if err != nil {
-		return fmt.Errorf("error creating messages index: %w", err)
-	}
-
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_reactions_message ON reactions(message_id)`)
-	if err != nil {
-		return fmt.Errorf("error creating reactions index: %w", err)
-	}
-
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_participants_user ON conversation_participants(user_id)`)
-	if err != nil {
-		return fmt.Errorf("error creating participants index: %w", err)
-	}
-
-	// Index for username lookups (login, search, uniqueness check)
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_users_name ON users(name)`)
-	if err != nil {
-		return fmt.Errorf("error creating users name index: %w", err)
-	}
-
-	// Index for message ordering by time
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)`)
-	if err != nil {
-		return fmt.Errorf("error creating messages created_at index: %w", err)
+	for _, idx := range indexes {
+		if _, err := db.Exec(idx.query); err != nil {
+			return fmt.Errorf("error creating %s: %w", idx.name, err)
+		}
 	}
 
 	return nil

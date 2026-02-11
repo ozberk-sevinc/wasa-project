@@ -223,8 +223,8 @@ func (rt *_router) getMe(w http.ResponseWriter, r *http.Request, ps httprouter.P
 	})
 }
 
-// setMyUsername handles PUT /me/username - change current user's username
-func (rt *_router) setMyUsername(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+// setMyUserName handles PUT /me/username - change current user's username
+func (rt *_router) setMyUserName(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	user := GetUserFromContext(r.Context())
 	if user == nil {
 		sendUnauthorized(w, "User not found in context")
@@ -260,6 +260,32 @@ func (rt *_router) setMyUsername(w http.ResponseWriter, r *http.Request, ps http
 		ctx.Logger.WithError(err).Error("error updating username")
 		sendInternalError(w, "Error updating username")
 		return
+	}
+
+	// Broadcast profile update to all users who have conversations with this user
+	userConversations, err := rt.db.GetConversationSummariesByUser(user.ID)
+	if err == nil {
+		uniqueParticipants := make(map[string]bool)
+		for _, conv := range userConversations {
+			participants, _ := rt.db.GetParticipants(conv.ID)
+			for _, p := range participants {
+				if p.ID != user.ID {
+					uniqueParticipants[p.ID] = true
+				}
+			}
+		}
+		var participantIDs []string
+		for id := range uniqueParticipants {
+			participantIDs = append(participantIDs, id)
+		}
+		rt.wsHub.BroadcastToUsers(participantIDs, WebSocketMessage{
+			Type: "profile_updated",
+			Payload: map[string]interface{}{
+				"userId":   user.ID,
+				"name":     req.Name,
+				"photoUrl": user.PhotoURL,
+			},
+		})
 	}
 
 	// Return updated user
@@ -329,9 +355,9 @@ func (rt *_router) searchUsers(w http.ResponseWriter, r *http.Request, ps httpro
 // CONVERSATION ENDPOINTS
 // ============================================================================
 
-// createConversation handles POST /conversations - start a new direct conversation
+// startConversation handles POST /conversations - start a new direct conversation
 // Also supports "Message Yourself" feature (like WhatsApp) when userId equals current user's ID
-func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
+func (rt *_router) startConversation(w http.ResponseWriter, r *http.Request, ps httprouter.Params, ctx reqcontext.RequestContext) {
 	user := GetUserFromContext(r.Context())
 	if user == nil {
 		sendUnauthorized(w, "User not found in context")
@@ -446,13 +472,27 @@ func (rt *_router) createConversation(w http.ResponseWriter, r *http.Request, ps
 		})
 	}
 
-	sendJSON(w, http.StatusCreated, ConversationResponse{
+	conversationResponse := ConversationResponse{
 		ID:           convID.String(),
 		Type:         "direct",
 		Title:        title,
 		Participants: participants,
 		Messages:     []MessageResponse{},
+	}
+
+	// Broadcast new conversation to both participants (for real-time conversations list update)
+	rt.wsHub.SendToUser(user.ID, WebSocketMessage{
+		Type:    "new_conversation",
+		Payload: conversationResponse,
 	})
+	if !isSelfConversation {
+		rt.wsHub.SendToUser(req.UserID, WebSocketMessage{
+			Type:    "new_conversation",
+			Payload: conversationResponse,
+		})
+	}
+
+	sendJSON(w, http.StatusCreated, conversationResponse)
 }
 
 // getMyConversations handles GET /conversations - list user's conversations
@@ -533,6 +573,40 @@ func (rt *_router) getConversation(w http.ResponseWriter, r *http.Request, ps ht
 
 	// Mark messages from others as "read" (two checkmarks) since user is viewing the conversation
 	_ = rt.db.MarkMessagesAsRead(conversationID, user.ID)
+
+	// Notify message senders that their messages have been read
+	// For groups, only notify when ALL members have read the message
+	participantsForRead, _ := rt.db.GetParticipants(conversationID)
+	if len(participantsForRead) > 0 {
+		// Get all messages in this conversation
+		messages, err := rt.db.GetMessagesByConversation(conversationID)
+		if err == nil {
+			// Check which messages are now fully read by everyone
+			var fullyReadMessageIDs []string
+			for _, msg := range messages {
+				status, err := rt.db.GetMessageStatus(msg.ID)
+				if err == nil && status == database.StatusRead {
+					fullyReadMessageIDs = append(fullyReadMessageIDs, msg.ID)
+				}
+			}
+
+			// Broadcast to all other participants with the updated message statuses
+			var senderIDs []string
+			for _, p := range participantsForRead {
+				if p.ID != user.ID {
+					senderIDs = append(senderIDs, p.ID)
+				}
+			}
+			rt.wsHub.BroadcastToUsers(senderIDs, WebSocketMessage{
+				Type: "messages_read",
+				Payload: map[string]interface{}{
+					"conversationId":      conversationID,
+					"readByUserId":        user.ID,
+					"fullyReadMessageIds": fullyReadMessageIDs,
+				},
+			})
+		}
+	}
 
 	conv, err := rt.db.GetConversationByID(conversationID)
 	if err != nil || conv == nil {
@@ -754,7 +828,7 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		FileURL:            req.FileURL,
 		FileName:           req.FileName,
 		RepliedToMessageID: req.ReplyToMessageID,
-		Status:             "sent",
+		Status:             database.StatusSent,
 		IsForwarded:        false,
 	}
 
@@ -792,9 +866,20 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		for _, p := range participants {
 			participantIDs = append(participantIDs, p.ID)
 		}
+		// Broadcast new message for ChatView
 		rt.wsHub.BroadcastToUsers(participantIDs, WebSocketMessage{
 			Type:    "new_message",
 			Payload: messageResponse,
+		})
+		// Broadcast conversation update for ConversationsView (so list updates with new snippet)
+		rt.wsHub.BroadcastToUsers(participantIDs, WebSocketMessage{
+			Type: "conversation_updated",
+			Payload: map[string]interface{}{
+				"conversationId":     conversationID,
+				"lastMessageSnippet": msg.Text,
+				"lastMessageIsPhoto": msg.ContentType == "photo",
+				"lastMessageAt":      msg.CreatedAt,
+			},
 		})
 	}
 
@@ -891,7 +976,7 @@ func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps htt
 		PhotoURL:       origMsg.PhotoURL,
 		FileURL:        origMsg.FileURL,
 		FileName:       origMsg.FileName,
-		Status:         "sent",
+		Status:         database.StatusSent,
 		IsForwarded:    true,
 	}
 
@@ -901,7 +986,7 @@ func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps htt
 		return
 	}
 
-	sendJSON(w, http.StatusCreated, MessageResponse{
+	messageResponse := MessageResponse{
 		ID:             newMsg.ID,
 		ConversationID: newMsg.ConversationID,
 		Sender: UserResponse{
@@ -919,7 +1004,33 @@ func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps htt
 		Status:      newMsg.Status,
 		Reactions:   []ReactionResponse{},
 		IsForwarded: newMsg.IsForwarded,
-	})
+	}
+
+	// Broadcast forwarded message to all participants in target conversation via WebSocket
+	participants, err := rt.db.GetParticipants(req.TargetConversationID)
+	if err == nil && len(participants) > 0 {
+		var participantIDs []string
+		for _, p := range participants {
+			participantIDs = append(participantIDs, p.ID)
+		}
+		// Broadcast new message for ChatView
+		rt.wsHub.BroadcastToUsers(participantIDs, WebSocketMessage{
+			Type:    "new_message",
+			Payload: messageResponse,
+		})
+		// Broadcast conversation update for ConversationsView
+		rt.wsHub.BroadcastToUsers(participantIDs, WebSocketMessage{
+			Type: "conversation_updated",
+			Payload: map[string]interface{}{
+				"conversationId":     req.TargetConversationID,
+				"lastMessageSnippet": newMsg.Text,
+				"lastMessageIsPhoto": newMsg.ContentType == "photo",
+				"lastMessageAt":      newMsg.CreatedAt,
+			},
+		})
+	}
+
+	sendJSON(w, http.StatusCreated, messageResponse)
 }
 
 // commentMessage handles POST /conversations/{conversationId}/messages/{messageId}/comments
@@ -967,7 +1078,7 @@ func (rt *_router) commentMessage(w http.ResponseWriter, r *http.Request, ps htt
 		return
 	}
 
-	sendJSON(w, http.StatusCreated, ReactionResponse{
+	reactionResponse := ReactionResponse{
 		ID:    reaction.ID,
 		Emoji: reaction.Emoji,
 		User: UserResponse{
@@ -977,7 +1088,27 @@ func (rt *_router) commentMessage(w http.ResponseWriter, r *http.Request, ps htt
 			PhotoURL:    user.PhotoURL,
 		},
 		CreatedAt: reaction.CreatedAt,
-	})
+	}
+
+	// Broadcast reaction to all conversation participants via WebSocket
+	conversationID := ps.ByName("conversationId")
+	participants, err := rt.db.GetParticipants(conversationID)
+	if err == nil {
+		var participantIDs []string
+		for _, p := range participants {
+			participantIDs = append(participantIDs, p.ID)
+		}
+		rt.wsHub.BroadcastToUsers(participantIDs, WebSocketMessage{
+			Type: "reaction_added",
+			Payload: map[string]interface{}{
+				"conversationId": conversationID,
+				"messageId":      messageID,
+				"reaction":       reactionResponse,
+			},
+		})
+	}
+
+	sendJSON(w, http.StatusCreated, reactionResponse)
 }
 
 // uncommentMessage handles DELETE /conversations/{conversationId}/messages/{messageId}/comments/{commentId}
@@ -1012,6 +1143,25 @@ func (rt *_router) uncommentMessage(w http.ResponseWriter, r *http.Request, ps h
 		ctx.Logger.WithError(err).Error("error deleting reaction")
 		sendInternalError(w, "Error deleting reaction")
 		return
+	}
+
+	// Broadcast reaction removal to all conversation participants via WebSocket
+	conversationID := ps.ByName("conversationId")
+	participants, err := rt.db.GetParticipants(conversationID)
+	if err == nil {
+		var participantIDs []string
+		for _, p := range participants {
+			participantIDs = append(participantIDs, p.ID)
+		}
+		rt.wsHub.BroadcastToUsers(participantIDs, WebSocketMessage{
+			Type: "reaction_removed",
+			Payload: map[string]interface{}{
+				"conversationId": conversationID,
+				"messageId":      reaction.MessageID,
+				"reactionId":     commentID,
+				"userId":         user.ID,
+			},
+		})
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -1073,12 +1223,30 @@ func (rt *_router) createGroup(w http.ResponseWriter, r *http.Request, ps httpro
 		})
 	}
 
-	sendJSON(w, http.StatusCreated, GroupResponse{
+	groupResponse := GroupResponse{
 		ID:        groupID.String(),
 		Name:      req.Name,
 		CreatedBy: user.ID,
 		Members:   memberResponses,
-	})
+	}
+
+	// Broadcast new group to all participants (creator + members) for real-time conversations list update
+	allParticipantIDs := append([]string{user.ID}, req.MemberIDs...)
+	for _, participantID := range allParticipantIDs {
+		rt.wsHub.SendToUser(participantID, WebSocketMessage{
+			Type: "new_conversation",
+			Payload: ConversationResponse{
+				ID:           groupID.String(),
+				Type:         "group",
+				Title:        req.Name,
+				PhotoURL:     nil,
+				Participants: memberResponses,
+				Messages:     []MessageResponse{},
+			},
+		})
+	}
+
+	sendJSON(w, http.StatusCreated, groupResponse)
 }
 
 // getGroup handles GET /groups/{groupId}
@@ -1287,6 +1455,20 @@ func (rt *_router) setGroupName(w http.ResponseWriter, r *http.Request, ps httpr
 		createdBy = *conv.CreatedBy
 	}
 
+	// Broadcast group update to all members via WebSocket
+	var memberIDs []string
+	for _, m := range members {
+		memberIDs = append(memberIDs, m.ID)
+	}
+	rt.wsHub.BroadcastToUsers(memberIDs, WebSocketMessage{
+		Type: "group_updated",
+		Payload: map[string]interface{}{
+			"groupId":  groupID,
+			"name":     conv.Name,
+			"photoUrl": conv.PhotoURL,
+		},
+	})
+
 	sendJSON(w, http.StatusOK, GroupResponse{
 		ID:        conv.ID,
 		Name:      conv.Name,
@@ -1421,6 +1603,34 @@ func (rt *_router) setMyPhoto(w http.ResponseWriter, r *http.Request, ps httprou
 		return
 	}
 
+	// Broadcast profile photo update to all users who have conversations with this user
+	userConversations, err := rt.db.GetConversationSummariesByUser(user.ID)
+	if err == nil && len(userConversations) > 0 {
+		// Collect all unique participant IDs from all conversations
+		uniqueParticipants := make(map[string]bool)
+		for _, conv := range userConversations {
+			participants, _ := rt.db.GetParticipants(conv.ID)
+			for _, p := range participants {
+				if p.ID != user.ID {
+					uniqueParticipants[p.ID] = true
+				}
+			}
+		}
+		// Broadcast to all participants
+		var participantIDs []string
+		for id := range uniqueParticipants {
+			participantIDs = append(participantIDs, id)
+		}
+		rt.wsHub.BroadcastToUsers(participantIDs, WebSocketMessage{
+			Type: "profile_updated",
+			Payload: map[string]interface{}{
+				"userId":   user.ID,
+				"name":     user.Name,
+				"photoUrl": photoURL,
+			},
+		})
+	}
+
 	sendJSON(w, http.StatusOK, UserResponse{
 		ID:          user.ID,
 		Name:        user.Name,
@@ -1512,6 +1722,20 @@ func (rt *_router) setGroupPhoto(w http.ResponseWriter, r *http.Request, ps http
 	if conv.CreatedBy != nil {
 		createdBy = *conv.CreatedBy
 	}
+
+	// Broadcast group photo update to all members via WebSocket
+	var memberIDs []string
+	for _, m := range members {
+		memberIDs = append(memberIDs, m.ID)
+	}
+	rt.wsHub.BroadcastToUsers(memberIDs, WebSocketMessage{
+		Type: "group_updated",
+		Payload: map[string]interface{}{
+			"groupId":  groupID,
+			"name":     conv.Name,
+			"photoUrl": photoURL,
+		},
+	})
 
 	sendJSON(w, http.StatusOK, GroupResponse{
 		ID:        conv.ID,
