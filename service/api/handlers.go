@@ -835,6 +835,9 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		return
 	}
 
+	// Sending a message implies the sender has read all previous messages in this conversation
+	_ = rt.db.MarkMessagesAsRead(conversationID, user.ID)
+
 	messageResponse := MessageResponse{
 		ID:             msg.ID,
 		ConversationID: msg.ConversationID,
@@ -876,6 +879,35 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 				"lastMessageAt":      msg.CreatedAt,
 			},
 		})
+
+		// Notify other participants that the sender has read their messages
+		// (sending a reply means they've read everything)
+		messages, readErr := rt.db.GetMessagesByConversation(conversationID)
+		if readErr == nil {
+			var fullyReadMessageIDs []string
+			for _, m := range messages {
+				status, sErr := rt.db.GetMessageStatus(m.ID)
+				if sErr == nil && status == database.StatusRead {
+					fullyReadMessageIDs = append(fullyReadMessageIDs, m.ID)
+				}
+			}
+			if len(fullyReadMessageIDs) > 0 {
+				var otherIDs []string
+				for _, p := range participants {
+					if p.ID != user.ID {
+						otherIDs = append(otherIDs, p.ID)
+					}
+				}
+				rt.wsHub.BroadcastToUsers(otherIDs, WebSocketMessage{
+					Type: "messages_read",
+					Payload: map[string]interface{}{
+						"conversationId":      conversationID,
+						"readByUserId":        user.ID,
+						"fullyReadMessageIds": fullyReadMessageIDs,
+					},
+				})
+			}
+		}
 	}
 
 	sendJSON(w, http.StatusCreated, messageResponse)

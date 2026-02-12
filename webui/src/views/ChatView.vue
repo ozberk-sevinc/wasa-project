@@ -993,7 +993,6 @@ getRepliedMessage(messageId) {
         </button>
         <div v-if="showAttachMenu" class="attach-menu">
           <button @click="triggerFileInput('photo')">📷 Photo</button>
-          <button @click="sendPhotoUrl()">🔗 URL</button>
         </div>
       </div>
       <!-- Emoji button -->
