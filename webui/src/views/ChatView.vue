@@ -89,12 +89,6 @@ export default {
 		
 				// Connect WebSocket for real-time messaging
 				this.connectWebSocket();
-				// Expose WebSocket globally for child components (GroupInfoPanel)
-				Object.defineProperty(window, 'WS_GLOBAL', {
-					configurable: true,
-					get: () => this.ws
-				});
-		
 		// Auto-refresh messages every 5 seconds as fallback (disabled when WebSocket is active)
 		this.refreshInterval = setInterval(() => {
 			this.loadConversation(true); // Silent refresh, no spinner or scroll jump

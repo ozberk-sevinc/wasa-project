@@ -203,21 +203,6 @@ export default {
 			if (this.show) {
 					this.loadGroupInfo();
 			}
-			// Listen for group_updated WebSocket events
-			this._wsHandler = (event) => {
-				try {
-					const data = JSON.parse(event.data);
-					if (data.type === "group_updated" && data.payload.groupId === this.groupId) {
-						if (this.group) {
-							if (data.payload.name) this.group.name = data.payload.name;
-							if (data.payload.photoUrl !== undefined) this.group.photoUrl = data.payload.photoUrl;
-						}
-					}
-				} catch (e) {}
-			};
-			if (window.WS_GLOBAL) {
-				window.WS_GLOBAL.addEventListener("message", this._wsHandler);
-			}
 	},
 	methods: {
 		async loadGroupInfo() {
@@ -317,10 +302,6 @@ export default {
 		},
 
 		close() {
-			// Remove WebSocket listener
-			if (window.WS_GLOBAL && this._wsHandler) {
-			  window.WS_GLOBAL.removeEventListener("message", this._wsHandler);
-			}
 			this.$emit("close");
 		},
 
