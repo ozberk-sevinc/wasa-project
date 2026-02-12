@@ -19,7 +19,8 @@ docker-compose.log
 *.db
 *.sqlite
 *.sqlite3
-data/
+data/*
+!data/.gitkeep
 
 # Linting config files
 .golangci.yml
@@ -27,7 +28,8 @@ data/
 webui/eslint.config.mjs
 
 # Uploaded files
-uploads/
+uploads/*
+!uploads/.gitkeep
 
  Build artifacts
 wasatext-backend.tar

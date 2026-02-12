@@ -33,6 +33,9 @@ RUN chmod +x webapi
 # Ensure data directory exists for SQLite database
 RUN mkdir -p /data
 
+# Ensure uploads directory exists for user-uploaded files
+RUN mkdir -p /app/uploads
+
 # Expose port 3000 (as per API spec and default config)
 EXPOSE 3000
 
