@@ -30,6 +30,14 @@
               {{ getInitials(group.name) }}
             </div>
           </div>
+          <button class="btn-change-photo" @click="$refs.groupPhotoInput.click()">📷 Change Photo</button>
+          <input
+            ref="groupPhotoInput"
+            type="file"
+            accept="image/*"
+            style="display: none;"
+            @change="changeGroupPhoto"
+          >
         </div>
 
         <!-- Group Name -->
@@ -305,6 +313,21 @@ export default {
 			this.$emit("close");
 		},
 
+		async changeGroupPhoto(event) {
+			const file = event.target.files[0];
+			if (!file) return;
+
+			try {
+				const response = await groupAPI.setPhoto(this.groupId, file);
+				this.group = response.data;
+				this.$emit("group-updated", response.data);
+			} catch (e) {
+				alert(e.response?.data?.message || "Failed to update group photo");
+			} finally {
+				event.target.value = "";
+			}
+		},
+
 		getPhotoUrl(photoUrl) {
 			if (!photoUrl) return null;
 			if (photoUrl.startsWith('http')) return photoUrl;
@@ -421,8 +444,24 @@ export default {
 /* Group Avatar */
 .group-avatar-section {
 	display: flex;
-	justify-content: center;
+	flex-direction: column;
+	align-items: center;
+	gap: 10px;
 	margin-bottom: 20px;
+}
+
+.btn-change-photo {
+	background: #3d3a52;
+	color: #e2e8f0;
+	border: none;
+	padding: 6px 16px;
+	border-radius: 6px;
+	font-size: 0.85rem;
+	cursor: pointer;
+}
+
+.btn-change-photo:hover {
+	background: #4d4763;
 }
 
 .group-avatar-large {
@@ -431,7 +470,10 @@ export default {
 	border-radius: 50%;
 	overflow: hidden;
 	border: 3px solid #3d3a52;
+	position: relative;
 }
+
+
 
 .avatar-img {
 	width: 100%;

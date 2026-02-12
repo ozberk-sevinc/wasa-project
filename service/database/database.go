@@ -293,6 +293,17 @@ func createTables(db *sql.DB) error {
 		}
 	}
 
+	// Migrations: add columns that may be missing in older databases
+	migrations := []string{
+		"ALTER TABLE conversations ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE conversations ADD COLUMN created_by TEXT",
+		"ALTER TABLE conversations ADD COLUMN photo_url TEXT",
+	}
+	for _, m := range migrations {
+		// Ignore errors — column may already exist
+		_, _ = db.Exec(m)
+	}
+
 	// Create indexes
 	indexes := []struct {
 		name  string

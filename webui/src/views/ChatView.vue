@@ -188,6 +188,10 @@ export default {
 							if (!exists) {
 								console.log("📨 Real-time message received:", message.id);
 								this.messages.push(message);
+								// If the message is from someone else, trigger read receipt on the backend
+								if (message.sender?.id !== this.currentUser?.id) {
+									conversationAPI.getById(this.conversationId).catch(() => {});
+								}
 								this.$nextTick(() => {
 									const container = this.$refs.messagesContainer;
 									if (container) {
@@ -276,6 +280,7 @@ export default {
 						if (this.conversation && this.conversationId === payload.groupId) {
 							if (payload.name) this.conversation.title = payload.name;
 							if (payload.photoUrl !== undefined) this.conversation.photoUrl = payload.photoUrl;
+							if (payload.members) this.conversation.participants = payload.members;
 						}
 					}
 				} catch (e) {

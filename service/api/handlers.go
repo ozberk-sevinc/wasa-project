@@ -1354,6 +1354,34 @@ func (rt *_router) addToGroup(w http.ResponseWriter, r *http.Request, ps httprou
 		createdBy = *conv.CreatedBy
 	}
 
+	// Broadcast group update to all members (including new member) for real-time member count update
+	var memberIDs []string
+	for _, m := range members {
+		memberIDs = append(memberIDs, m.ID)
+	}
+	rt.wsHub.BroadcastToUsers(memberIDs, WebSocketMessage{
+		Type: "group_updated",
+		Payload: map[string]interface{}{
+			"groupId":  groupID,
+			"name":     conv.Name,
+			"photoUrl": conv.PhotoURL,
+			"members":  memberResponses,
+		},
+	})
+
+	// Send new_conversation to the newly added user so the group appears in their conversations list
+	_ = rt.wsHub.SendToUser(req.UserID, WebSocketMessage{
+		Type: "new_conversation",
+		Payload: ConversationResponse{
+			ID:           groupID,
+			Type:         "group",
+			Title:        conv.Name,
+			PhotoURL:     conv.PhotoURL,
+			Participants: memberResponses,
+			Messages:     []MessageResponse{},
+		},
+	})
+
 	sendJSON(w, http.StatusOK, GroupResponse{
 		ID:        conv.ID,
 		Name:      conv.Name,
