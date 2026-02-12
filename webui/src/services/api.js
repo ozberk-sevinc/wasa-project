@@ -1,5 +1,7 @@
 import axios from "axios";
 
+export const API_URL = __API_URL__;
+
 // Create axios instance
 const api = axios.create({
 	baseURL: __API_URL__,
@@ -25,7 +27,7 @@ api.interceptors.response.use(
 		if (error.response?.status === 401) {
 			localStorage.removeItem("wasatext_token");
 			localStorage.removeItem("wasatext_user");
-			window.location.hash = "#/login";
+			window.location.href = "/login";
 		}
 		return Promise.reject(error);
 	}
@@ -78,13 +80,11 @@ export const messageAPI = {
 			headers: { "Content-Type": "multipart/form-data" },
 		});
 	},
-	send: (conversationId, { contentType, text, photoUrl, fileUrl, fileName, replyToMessageId }) =>
+	send: (conversationId, { contentType, text, photoUrl, replyToMessageId }) =>
 		api.post(`/conversations/${conversationId}/messages`, {
 			contentType,
 			text,
 			photoUrl,
-			fileUrl,
-			fileName,
 			replyToMessageId,
 		}),
 	delete: (conversationId, messageId) =>

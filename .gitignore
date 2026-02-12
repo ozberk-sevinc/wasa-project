@@ -21,6 +21,11 @@ docker-compose.log
 *.sqlite3
 data/
 
+# Linting config files
+.golangci.yml
+.spectral.js
+webui/eslint.config.mjs
+
 # Uploaded files
 uploads/
 

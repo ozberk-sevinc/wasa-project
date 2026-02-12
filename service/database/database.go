@@ -16,7 +16,7 @@ This is an example on how to migrate the DB and connect to it:
 
 	// Start Database
 	logger.Println("initializing database support")
-	db, err := sql.Open("sqlite3", "./foo.db")
+	db, err := sql.Open("sqlite3", "./data/wasatext.db")
 	if err != nil {
 	    logger.WithError(err).Error("error opening SQLite DB")
 	    return fmt.Errorf("opening SQLite: %w", err)
@@ -58,6 +58,7 @@ type Conversation struct {
 	Name      string // group name or empty for direct
 	PhotoURL  *string
 	CreatedBy *string // User ID of group creator (null for direct conversations)
+	CreatedAt string  // ISO 8601 timestamp of when the conversation was created
 }
 
 // Message represents a single message
@@ -66,7 +67,7 @@ type Message struct {
 	ConversationID     string
 	SenderID           string
 	CreatedAt          string
-	ContentType        string // "text", "photo", "audio", "document", "file"
+	ContentType        string // "text", "photo"
 	Text               *string
 	PhotoURL           *string
 	FileURL            *string
@@ -110,7 +111,7 @@ type AppDatabase interface {
 	GetUsersByIDs(ids []string) ([]User, error)
 
 	// Conversation methods
-	CreateConversation(id, convType, name string, createdBy *string) error
+	CreateConversation(id, convType, name string, createdBy *string, createdAt string) error
 	GetConversationByID(id string) (*Conversation, error)
 	GetConversationsByUser(userID string) ([]Conversation, error)
 	GetConversationSummariesByUser(userID string) ([]ConversationSummary, error)
@@ -169,6 +170,7 @@ const (
 			name TEXT,
 			photo_url TEXT,
 			created_by TEXT,
+			created_at TEXT NOT NULL DEFAULT '',
 			FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 		)`
 
@@ -187,7 +189,7 @@ const (
 			conversation_id TEXT NOT NULL,
 			sender_id TEXT NOT NULL,
 			created_at TEXT NOT NULL,
-			content_type TEXT NOT NULL CHECK (content_type IN ('text', 'photo', 'audio', 'document', 'file')),
+			content_type TEXT NOT NULL CHECK (content_type IN ('text', 'photo')),
 			text TEXT,
 			photo_url TEXT,
 			file_url TEXT,

@@ -10,6 +10,12 @@ export default {
 			error: null,
 		};
 	},
+	mounted() {
+		// If already logged in, redirect
+		if (localStorage.getItem("wasatext_token")) {
+			this.$router.push("/");
+		}
+	},
 	methods: {
 		async handleLogin() {
 			if (!this.username.trim()) {
@@ -49,60 +55,54 @@ export default {
 			}
 		},
 	},
-	mounted() {
-		// If already logged in, redirect
-		if (localStorage.getItem("wasatext_token")) {
-			this.$router.push("/");
-		}
-	},
 };
 </script>
 
 <template>
-	<div class="login-container">
-		<div class="login-card">
-			<div class="login-header">
-				<img src="/logo.png" alt="WASAText Logo" class="login-logo" />
-				<h1>WASAText</h1>
-				<p class="text-muted">Enter your username to start chatting</p>
-			</div>
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <img src="/logo.png" alt="WASAText Logo" class="login-logo">
+        <h1>WASAText</h1>
+        <p class="text-muted">Enter your username to start chatting</p>
+      </div>
 
-			<form @submit.prevent="handleLogin" class="login-form">
-				<div class="mb-3">
-					<label for="username" class="form-label">Username</label>
-					<input
-						type="text"
-						class="form-control form-control-lg"
-						id="username"
-						v-model="username"
-						placeholder="Enter username (3-16 chars)"
-						:disabled="loading"
-						autofocus
-					/>
-				</div>
+      <form class="login-form" @submit.prevent="handleLogin">
+        <div class="mb-3">
+          <label for="username" class="form-label">Username</label>
+          <input
+            id="username"
+            v-model="username"
+            type="text"
+            class="form-control form-control-lg"
+            placeholder="Enter username (3-16 chars)"
+            :disabled="loading"
+            autofocus
+          >
+        </div>
 
-				<div v-if="error" class="alert alert-danger" role="alert">
-					{{ error }}
-				</div>
+        <div v-if="error" class="alert alert-danger" role="alert">
+          {{ error }}
+        </div>
 
-				<button
-					type="submit"
-					class="btn btn-primary btn-lg w-100"
-					:disabled="loading || !username.trim()"
-				>
-					<span v-if="loading">
-						<span class="spinner-border spinner-border-sm me-2" role="status"></span>
-						Logging in...
-					</span>
-					<span v-else>Continue</span>
-				</button>
+        <button
+          type="submit"
+          class="btn btn-primary btn-lg w-100"
+          :disabled="loading || !username.trim()"
+        >
+          <span v-if="loading">
+            <span class="spinner-border spinner-border-sm me-2" role="status" />
+            Logging in...
+          </span>
+          <span v-else>Continue</span>
+        </button>
 
-				<p class="text-muted text-center mt-3 small">
-					If this username is new, a new account will be created.
-				</p>
-			</form>
-		</div>
-	</div>
+        <p class="text-muted text-center mt-3 small">
+          If this username is new, a new account will be created.
+        </p>
+      </form>
+    </div>
+  </div>
 </template>
 
 <style scoped>

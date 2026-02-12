@@ -175,11 +175,12 @@ func (db *appdbimpl) GetMessageStatus(messageID string) (string, error) {
 	}
 
 	// Determine status based on read counts
-	if readCount == 0 {
+	switch {
+	case readCount == 0:
 		return StatusSent, nil
-	} else if readCount >= totalParticipants {
+	case readCount >= totalParticipants:
 		return StatusRead, nil
-	} else {
+	default:
 		return StatusReceived, nil
 	}
 }

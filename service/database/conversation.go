@@ -5,14 +5,14 @@ import (
 	"errors"
 )
 
-func (db *appdbimpl) CreateConversation(id, convType, name string, createdBy *string) error {
-	_, err := db.c.Exec("INSERT INTO conversations (id, type, name, created_by) VALUES (?, ?, ?, ?)", id, convType, name, createdBy)
+func (db *appdbimpl) CreateConversation(id, convType, name string, createdBy *string, createdAt string) error {
+	_, err := db.c.Exec("INSERT INTO conversations (id, type, name, created_by, created_at) VALUES (?, ?, ?, ?, ?)", id, convType, name, createdBy, createdAt)
 	return err
 }
 
 func (db *appdbimpl) GetConversationByID(id string) (*Conversation, error) {
 	var c Conversation
-	err := db.c.QueryRow("SELECT id, type, name, photo_url, created_by FROM conversations WHERE id = ?", id).Scan(&c.ID, &c.Type, &c.Name, &c.PhotoURL, &c.CreatedBy)
+	err := db.c.QueryRow("SELECT id, type, name, photo_url, created_by, created_at FROM conversations WHERE id = ?", id).Scan(&c.ID, &c.Type, &c.Name, &c.PhotoURL, &c.CreatedBy, &c.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -24,7 +24,7 @@ func (db *appdbimpl) GetConversationByID(id string) (*Conversation, error) {
 
 func (db *appdbimpl) GetConversationsByUser(userID string) ([]Conversation, error) {
 	rows, err := db.c.Query(`
-        SELECT c.id, c.type, c.name, c.photo_url, c.created_by
+        SELECT c.id, c.type, c.name, c.photo_url, c.created_by, c.created_at
         FROM conversations c
         JOIN conversation_participants cp ON c.id = cp.conversation_id
         WHERE cp.user_id = ?
@@ -40,7 +40,7 @@ func (db *appdbimpl) GetConversationsByUser(userID string) ([]Conversation, erro
 	var convs []Conversation
 	for rows.Next() {
 		var c Conversation
-		if err := rows.Scan(&c.ID, &c.Type, &c.Name, &c.PhotoURL, &c.CreatedBy); err != nil {
+		if err := rows.Scan(&c.ID, &c.Type, &c.Name, &c.PhotoURL, &c.CreatedBy, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		convs = append(convs, c)

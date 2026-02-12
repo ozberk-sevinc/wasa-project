@@ -1,6 +1,6 @@
 <script>
 import { userAPI } from "@/services/api.js";
-import { API_URL } from "@/services/axios.js";
+import { API_URL } from "@/services/api.js";
 
 export default {
 	name: "ProfileView",
@@ -13,6 +13,9 @@ export default {
 			newUsername: "",
 			saving: false,
 		};
+	},
+	mounted() {
+		this.loadProfile();
 	},
 	methods: {
 		async loadProfile() {
@@ -94,120 +97,117 @@ export default {
 			return `${API_URL}${photoUrl}`;
 		},
 	},
-	mounted() {
-		this.loadProfile();
-	},
 };
 </script>
 
 <template>
-	<div class="profile-container">
-		<!-- Header -->
-		<header class="profile-header">
-			<button class="btn-back" @click="$router.push('/')">← Back</button>
-			<h1>Profile</h1>
-			<div></div>
-		</header>
+  <div class="profile-container">
+    <!-- Header -->
+    <header class="profile-header">
+      <button class="btn-back" @click="$router.push('/')">← Back</button>
+      <h1>Profile</h1>
+      <div />
+    </header>
 
-		<!-- Loading -->
-		<div v-if="loading" class="text-center p-5">
-			<div class="spinner-border text-primary"></div>
-		</div>
+    <!-- Loading -->
+    <div v-if="loading" class="text-center p-5">
+      <div class="spinner-border text-primary" />
+    </div>
 
-		<!-- Error -->
-		<div v-else-if="error" class="alert alert-danger m-3">
-			{{ error }}
-		</div>
+    <!-- Error -->
+    <div v-else-if="error" class="alert alert-danger m-3">
+      {{ error }}
+    </div>
 
-		<!-- Profile Content -->
-		<div v-else class="profile-content">
-			<!-- Hidden file input for profile photo -->
-			<input
-				type="file"
-				ref="photoInput"
-				accept="image/*"
-				style="display: none"
-				@change="handlePhotoSelect"
-			/>
+    <!-- Profile Content -->
+    <div v-else class="profile-content">
+      <!-- Hidden file input for profile photo -->
+      <input
+        ref="photoInput"
+        type="file"
+        accept="image/*"
+        style="display: none"
+        @change="handlePhotoSelect"
+      >
 
-			<!-- Avatar -->
-			<div class="profile-avatar-section">
-				<div class="profile-avatar" @click="triggerPhotoInput">
-					<img v-if="user.photoUrl" :src="getPhotoUrl(user.photoUrl)" :alt="user.name" />
-					<div v-else class="avatar-placeholder large">
-						{{ getInitials(user.name) }}
-					</div>
-					<div class="avatar-overlay">
-						<span>📷</span>
-					</div>
-				</div>
-				<p class="text-muted small mt-2">Tap to change photo</p>
-			</div>
+      <!-- Avatar -->
+      <div class="profile-avatar-section">
+        <div class="profile-avatar" @click="triggerPhotoInput">
+          <img v-if="user.photoUrl" :src="getPhotoUrl(user.photoUrl)" :alt="user.name">
+          <div v-else class="avatar-placeholder large">
+            {{ getInitials(user.name) }}
+          </div>
+          <div class="avatar-overlay">
+            <span>📷</span>
+          </div>
+        </div>
+        <p class="text-muted small mt-2">Tap to change photo</p>
+      </div>
 
-			<!-- Info Cards -->
-			<div class="profile-cards">
-				<!-- Username -->
-				<div class="profile-card">
-					<div class="card-label">Username</div>
-					<div v-if="!editingUsername" class="card-value-row">
-						<span class="card-value">{{ user.name }}</span>
-						<button class="btn btn-sm btn-outline-primary" @click="startEditUsername">
-							Edit
-						</button>
-					</div>
-					<div v-else class="card-edit">
-						<input
-							type="text"
-							class="form-control"
-							v-model="newUsername"
-							placeholder="New username (3-16 chars)"
-							:disabled="saving"
-						/>
-						<div class="edit-buttons">
-							<button
-								class="btn btn-sm btn-secondary"
-								@click="cancelEditUsername"
-								:disabled="saving"
-							>
-								Cancel
-							</button>
-							<button
-								class="btn btn-sm btn-primary"
-								@click="saveUsername"
-								:disabled="saving || !newUsername.trim()"
-							>
-								<span v-if="saving">Saving...</span>
-								<span v-else>Save</span>
-							</button>
-						</div>
-					</div>
-				</div>
+      <!-- Info Cards -->
+      <div class="profile-cards">
+        <!-- Username -->
+        <div class="profile-card">
+          <div class="card-label">Username</div>
+          <div v-if="!editingUsername" class="card-value-row">
+            <span class="card-value">{{ user.name }}</span>
+            <button class="btn btn-sm btn-outline-primary" @click="startEditUsername">
+              Edit
+            </button>
+          </div>
+          <div v-else class="card-edit">
+            <input
+              v-model="newUsername"
+              type="text"
+              class="form-control"
+              placeholder="New username (3-16 chars)"
+              :disabled="saving"
+            >
+            <div class="edit-buttons">
+              <button
+                class="btn btn-sm btn-secondary"
+                :disabled="saving"
+                @click="cancelEditUsername"
+              >
+                Cancel
+              </button>
+              <button
+                class="btn btn-sm btn-primary"
+                :disabled="saving || !newUsername.trim()"
+                @click="saveUsername"
+              >
+                <span v-if="saving">Saving...</span>
+                <span v-else>Save</span>
+              </button>
+            </div>
+          </div>
+        </div>
 
-				<!-- User ID -->
-				<div class="profile-card">
-					<div class="card-label">User ID</div>
-					<div class="card-value-row">
-						<span class="card-value id-value">{{ user.id }}</span>
-					</div>
-				</div>
+        <!-- User ID -->
+        <div class="profile-card">
+          <div class="card-label">User ID</div>
+          <div class="card-value-row">
+            <span class="card-value id-value">{{ user.id }}</span>
+          </div>
+        </div>
 
-				<!-- Display Name (if set) -->
-				<div v-if="user.displayName" class="profile-card">
-					<div class="card-label">Display Name</div>
-					<div class="card-value-row">
-						<span class="card-value">{{ user.displayName }}</span>
-					</div>
-				</div>
-			</div>
+        <!-- Display Name (if set) -->
+        <div v-if="user.displayName" class="profile-card">
+          <div class="card-label">Display Name</div>
+          <div class="card-value-row">
+            <span class="card-value">{{ user.displayName }}</span>
+          </div>
+        </div>
+      </div>
 
-			<!-- Logout -->
-			<div class="logout-section">
-				<button class="btn btn-danger btn-lg w-100" @click="logout">
-					Logout
-				</button>
-			</div>
-		</div>
-	</div>
+      <!-- Logout -->
+      <div class="logout-section">
+        <button class="btn btn-danger btn-lg w-100" @click="logout">
+          Logout
+        </button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>

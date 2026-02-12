@@ -31,6 +31,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/ardanlabs/conf"
@@ -81,7 +82,15 @@ func run() error {
 
 	// Start Database
 	logger.Println("initializing database support")
-	// Remove journal mode from connection string - let PRAGMA handle it
+
+	// Ensure the directory for the database file exists
+	if dir := filepath.Dir(cfg.DB.Filename); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			logger.WithError(err).Error("error creating database directory")
+			return fmt.Errorf("creating database directory %s: %w", dir, err)
+		}
+	}
+
 	dbconn, err := sql.Open("sqlite3", cfg.DB.Filename)
 	if err != nil {
 		logger.WithError(err).Error("error opening SQLite DB")

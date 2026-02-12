@@ -17,4 +17,4 @@ log:
 #  behindproxy: false
 
 db:
-  filename: ./data/wasa.db
+  filename: ./data/wasatext.db

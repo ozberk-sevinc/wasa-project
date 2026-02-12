@@ -1,6 +1,6 @@
 <script>
 import { conversationAPI, userAPI, groupAPI } from "@/services/api.js";
-import { API_URL } from "@/services/axios.js";
+import { API_URL } from "@/services/api.js";
 
 export default {
 	name: "ConversationsView",
@@ -39,6 +39,27 @@ export default {
 				return dateB - dateA;
 			});
 		},
+	},
+	mounted() {
+		this.loadCurrentUser();
+		this.loadConversations(); // Initial load with spinner
+		
+		// Connect WebSocket for real-time updates
+		this.connectWebSocket();
+		
+		// Auto-refresh conversations every 5 seconds (silent) - fallback when WebSocket disconnected
+		this.refreshInterval = setInterval(() => {
+			this.loadConversations(true); // Silent refresh, no spinner
+		}, 5000);
+	},
+	beforeUnmount() {
+		// Clean up WebSocket connection
+		this.disconnectWebSocket();
+		
+		// Clean up interval when component is destroyed
+		if (this.refreshInterval) {
+			clearInterval(this.refreshInterval);
+		}
 	},
 	methods: {
 		async loadConversations(silent = false) {
@@ -396,302 +417,281 @@ export default {
 			}
 		},
 	},
-	mounted() {
-		this.loadCurrentUser();
-		this.loadConversations(); // Initial load with spinner
-		
-		// Connect WebSocket for real-time updates
-		this.connectWebSocket();
-		
-		// Auto-refresh conversations every 5 seconds (silent) - fallback when WebSocket disconnected
-		this.refreshInterval = setInterval(() => {
-			this.loadConversations(true); // Silent refresh, no spinner
-		}, 5000);
-	},
-	beforeUnmount() {
-		// Clean up WebSocket connection
-		this.disconnectWebSocket();
-		
-		// Clean up interval when component is destroyed
-		if (this.refreshInterval) {
-			clearInterval(this.refreshInterval);
-		}
-	},
 };
 </script>
 
 <template>
-	<div class="conversations-container">
-		<!-- Header -->
-		<header class="conv-header">
-			<div class="header-left">
-				<img src="/logo.png" alt="WASAText" class="header-logo" />
-				<h1>WASAText</h1>
-			</div>
-			<div class="header-right">
-				<button class="btn btn-light btn-sm me-2" @click="$router.push('/profile')">
-					{{ currentUser?.name || "Profile" }}
-				</button>
-				<button class="btn btn-outline-light btn-sm" @click="logout">Logout</button>
-			</div>
-		</header>
+  <div class="conversations-container">
+    <!-- Header -->
+    <header class="conv-header">
+      <div class="header-left">
+        <img src="/logo.png" alt="WASAText" class="header-logo">
+        <h1>WASAText</h1>
+      </div>
+      <div class="header-right">
+        <button class="btn btn-light btn-sm me-2" @click="$router.push('/profile')">
+          {{ currentUser?.name || "Profile" }}
+        </button>
+        <button class="btn btn-outline-light btn-sm" @click="logout">Logout</button>
+      </div>
+    </header>
 
-		<!-- Toolbar -->
-		<div class="conv-toolbar">
-			<button class="btn btn-primary" @click="showNewChat = true">
-				<span class="me-1">+</span> New Chat
-			</button>
-			<button class="btn btn-outline-secondary ms-2" @click="loadConversations">
-				🔄 Refresh
-			</button>
-		</div>
+    <!-- Toolbar -->
+    <div class="conv-toolbar">
+      <button class="btn btn-primary" @click="showNewChat = true">
+        <span class="me-1">+</span> New Chat
+      </button>
+      <button class="btn btn-outline-secondary ms-2" @click="loadConversations">
+        🔄 Refresh
+      </button>
+    </div>
 
-		<!-- Loading -->
-		<div v-if="loading" class="text-center p-5">
-			<div class="spinner-border text-primary" role="status"></div>
-			<p class="mt-2 text-muted">Loading conversations...</p>
-		</div>
+    <!-- Loading -->
+    <div v-if="loading" class="text-center p-5">
+      <div class="spinner-border text-primary" role="status" />
+      <p class="mt-2 text-muted">Loading conversations...</p>
+    </div>
 
-		<!-- Error -->
-		<div v-else-if="error" class="alert alert-danger m-3">
-			{{ error }}
-			<button class="btn btn-sm btn-outline-danger ms-2" @click="loadConversations">Retry</button>
-		</div>
+    <!-- Error -->
+    <div v-else-if="error" class="alert alert-danger m-3">
+      {{ error }}
+      <button class="btn btn-sm btn-outline-danger ms-2" @click="loadConversations">Retry</button>
+    </div>
 
-		<!-- Empty State -->
-		<div v-else-if="conversations.length === 0" class="empty-state">
-			<div class="empty-icon">💬</div>
-			<h3>No conversations yet</h3>
-			<p class="text-muted">Start a new chat to begin messaging</p>
-			<button class="btn btn-primary" @click="showNewChat = true">Start New Chat</button>
-		</div>
+    <!-- Empty State -->
+    <div v-else-if="conversations.length === 0" class="empty-state">
+      <div class="empty-icon">💬</div>
+      <h3>No conversations yet</h3>
+      <p class="text-muted">Start a new chat to begin messaging</p>
+      <button class="btn btn-primary" @click="showNewChat = true">Start New Chat</button>
+    </div>
 
-		<!-- Conversation List -->
-		<div v-else class="conversation-list">
-			<div
-				v-for="conv in sortedConversations"
-				:key="conv.id"
-				class="conversation-item"
-				@click="openConversation(conv.id)"
-			>
-				<div class="conv-avatar" :class="{ 'group-avatar': conv.type === 'group' }">
-					<div v-if="conv.photoUrl" class="avatar-img">
-						<img :src="getPhotoUrl(conv.photoUrl)" :alt="conv.title" />
-					</div>
-					<div v-else class="avatar-placeholder">
-						{{ getInitials(conv.title) }}
-					</div>
-					<!-- Edit icon for groups -->
-					<button
-						v-if="conv.type === 'group'"
-						class="avatar-edit-btn"
-						@click="openGroupPhotoEdit($event, conv)"
-						title="Change group photo"
-					>
-						📷
-					</button>
-				</div>
-				<div class="conv-details">
-					<div class="conv-top">
-						<span class="conv-title">{{ conv.title }}</span>
-						<span class="conv-time">{{ formatTime(conv.lastMessageAt) }}</span>
-					</div>
-					<div class="conv-bottom">
-						<span class="conv-preview">
-							<span v-if="conv.lastMessageIsPhoto">📷 Photo</span>
-							<span v-else>{{ conv.lastMessageSnippet || "No messages yet" }}</span>
-						</span>
-						<span v-if="conv.type === 'group'" class="conv-badge">Group</span>
-					</div>
-				</div>
-			</div>
-		</div>
+    <!-- Conversation List -->
+    <div v-else class="conversation-list">
+      <div
+        v-for="conv in sortedConversations"
+        :key="conv.id"
+        class="conversation-item"
+        @click="openConversation(conv.id)"
+      >
+        <div class="conv-avatar" :class="{ 'group-avatar': conv.type === 'group' }">
+          <div v-if="conv.photoUrl" class="avatar-img">
+            <img :src="getPhotoUrl(conv.photoUrl)" :alt="conv.title">
+          </div>
+          <div v-else class="avatar-placeholder">
+            {{ getInitials(conv.title) }}
+          </div>
+          <!-- Edit icon for groups -->
+          <button
+            v-if="conv.type === 'group'"
+            class="avatar-edit-btn"
+            title="Change group photo"
+            @click="openGroupPhotoEdit($event, conv)"
+          >
+            📷
+          </button>
+        </div>
+        <div class="conv-details">
+          <div class="conv-top">
+            <span class="conv-title">{{ conv.title }}</span>
+            <span class="conv-time">{{ formatTime(conv.lastMessageAt) }}</span>
+          </div>
+          <div class="conv-bottom">
+            <span class="conv-preview">
+              <span v-if="conv.lastMessageIsPhoto">📷 Photo</span>
+              <span v-else>{{ conv.lastMessageSnippet || "No messages yet" }}</span>
+            </span>
+            <span v-if="conv.type === 'group'" class="conv-badge">Group</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
-		<!-- New Chat Modal -->
-		<div v-if="showNewChat" class="modal-overlay" @click.self="showNewChat = false">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5>New Chat</h5>
-					<button class="btn-close" @click="showNewChat = false"></button>
-				</div>
-				<div class="modal-body">
-					<!-- Message Yourself -->
-					<div class="self-chat-option" @click="startSelfConversation">
-						<div class="avatar-placeholder">📝</div>
-						<div class="self-chat-text">
-							<strong>Message Yourself</strong>
-							<span class="text-muted">Save notes, links, and reminders</span>
-						</div>
-					</div>
+    <!-- New Chat Modal -->
+    <div v-if="showNewChat" class="modal-overlay" @click.self="showNewChat = false">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5>New Chat</h5>
+          <button class="btn-close" @click="showNewChat = false" />
+        </div>
+        <div class="modal-body">
+          <!-- Message Yourself -->
+          <div class="self-chat-option" @click="startSelfConversation">
+            <div class="avatar-placeholder">📝</div>
+            <div class="self-chat-text">
+              <strong>Message Yourself</strong>
+              <span class="text-muted">Save notes, links, and reminders</span>
+            </div>
+          </div>
 
-					<!-- Create Group -->
-					<div class="self-chat-option" @click="openCreateGroup" style="margin-top: 10px;">
-						<div class="avatar-placeholder">👥</div>
-						<div class="self-chat-text">
-							<strong>Create Group</strong>
-							<span class="text-muted">Chat with multiple people</span>
-						</div>
-					</div>
+          <!-- Create Group -->
+          <div class="self-chat-option" style="margin-top: 10px;" @click="openCreateGroup">
+            <div class="avatar-placeholder">👥</div>
+            <div class="self-chat-text">
+              <strong>Create Group</strong>
+              <span class="text-muted">Chat with multiple people</span>
+            </div>
+          </div>
 
-					<hr />
+          <hr>
 
-					<!-- Search Users -->
-					<div class="search-section">
-						<input
-							type="text"
-							class="form-control"
-							placeholder="Search users by name..."
-							v-model="searchQuery"
-							@input="searchUsers"
-						/>
-					</div>
+          <!-- Search Users -->
+          <div class="search-section">
+            <input
+              v-model="searchQuery"
+              type="text"
+              class="form-control"
+              placeholder="Search users by name..."
+              @input="searchUsers"
+            >
+          </div>
 
-					<div v-if="searchLoading" class="text-center p-3">
-						<div class="spinner-border spinner-border-sm"></div>
-					</div>
+          <div v-if="searchLoading" class="text-center p-3">
+            <div class="spinner-border spinner-border-sm" />
+          </div>
 
-					<div v-else-if="searchResults.length > 0" class="search-results">
-						<div
-							v-for="user in searchResults"
-							:key="user.id"
-							class="search-result-item"
-							@click="startConversation(user.id)"
-						>
-							<div class="avatar-placeholder small">
-								{{ getInitials(user.name) }}
-							</div>
-							<div class="user-info">
-								<strong>{{ user.name }}</strong>
-								<span v-if="user.displayName" class="text-muted">{{ user.displayName }}</span>
-							</div>
-						</div>
-					</div>
+          <div v-else-if="searchResults.length > 0" class="search-results">
+            <div
+              v-for="user in searchResults"
+              :key="user.id"
+              class="search-result-item"
+              @click="startConversation(user.id)"
+            >
+              <div class="avatar-placeholder small">
+                {{ getInitials(user.name) }}
+              </div>
+              <div class="user-info">
+                <strong>{{ user.name }}</strong>
+                <span v-if="user.displayName" class="text-muted">{{ user.displayName }}</span>
+              </div>
+            </div>
+          </div>
 
-					<div v-else-if="searchQuery && !searchLoading" class="text-center p-3 text-muted">
-						No users found
-					</div>
-				</div>
-			</div>
-		</div>
+          <div v-else-if="searchQuery && !searchLoading" class="text-center p-3 text-muted">
+            No users found
+          </div>
+        </div>
+      </div>
+    </div>
 
-		<!-- Create Group Modal -->
-		<div v-if="showCreateGroup" class="modal-overlay" @click.self="closeCreateGroup">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5>Create Group</h5>
-					<button class="btn-close" @click="closeCreateGroup"></button>
-				</div>
-				<div class="modal-body">
-					<!-- Group Name -->
-					<div class="form-group">
-						<label>Group Name</label>
-						<input
-							type="text"
-							class="form-control"
-							placeholder="Enter group name..."
-							v-model="groupName"
-							:disabled="creatingGroup"
-						/>
-					</div>
+    <!-- Create Group Modal -->
+    <div v-if="showCreateGroup" class="modal-overlay" @click.self="closeCreateGroup">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5>Create Group</h5>
+          <button class="btn-close" @click="closeCreateGroup" />
+        </div>
+        <div class="modal-body">
+          <!-- Group Name -->
+          <div class="form-group">
+            <label>Group Name</label>
+            <input
+              v-model="groupName"
+              type="text"
+              class="form-control"
+              placeholder="Enter group name..."
+              :disabled="creatingGroup"
+            >
+          </div>
 
-					<!-- Selected Members -->
-					<div v-if="selectedMembers.length > 0" class="selected-members">
-						<label>Members ({{ selectedMembers.length }})</label>
-						<div class="member-chips">
-							<span v-for="member in selectedMembers" :key="member.id" class="member-chip">
-								{{ member.name }}
-								<button @click="removeMember(member.id)" class="remove-chip">×</button>
-							</span>
-						</div>
-					</div>
+          <!-- Selected Members -->
+          <div v-if="selectedMembers.length > 0" class="selected-members">
+            <label>Members ({{ selectedMembers.length }})</label>
+            <div class="member-chips">
+              <span v-for="member in selectedMembers" :key="member.id" class="member-chip">
+                {{ member.name }}
+                <button class="remove-chip" @click="removeMember(member.id)">×</button>
+              </span>
+            </div>
+          </div>
 
-					<!-- Search Members -->
-					<div class="search-section">
-						<label>Add Members</label>
-						<input
-							type="text"
-							class="form-control"
-							placeholder="Search users to add..."
-							v-model="groupSearchQuery"
-							@input="searchGroupMembers"
-							:disabled="creatingGroup"
-						/>
-					</div>
+          <!-- Search Members -->
+          <div class="search-section">
+            <label>Add Members</label>
+            <input
+              v-model="groupSearchQuery"
+              type="text"
+              class="form-control"
+              placeholder="Search users to add..."
+              :disabled="creatingGroup"
+              @input="searchGroupMembers"
+            >
+          </div>
 
-					<div v-if="groupSearchResults.length > 0" class="search-results">
-						<div
-							v-for="user in groupSearchResults"
-							:key="user.id"
-							class="search-result-item"
-							@click="addMember(user)"
-						>
-							<div class="avatar-placeholder small">
-								{{ getInitials(user.name) }}
-							</div>
-							<div class="user-info">
-								<strong>{{ user.name }}</strong>
-							</div>
-						</div>
-					</div>
+          <div v-if="groupSearchResults.length > 0" class="search-results">
+            <div
+              v-for="user in groupSearchResults"
+              :key="user.id"
+              class="search-result-item"
+              @click="addMember(user)"
+            >
+              <div class="avatar-placeholder small">
+                {{ getInitials(user.name) }}
+              </div>
+              <div class="user-info">
+                <strong>{{ user.name }}</strong>
+              </div>
+            </div>
+          </div>
 
-					<!-- Create Button -->
-					<button
-						class="btn btn-primary w-100 mt-3"
-						@click="createGroup"
-						:disabled="!groupName.trim() || creatingGroup"
-					>
-						<span v-if="creatingGroup">Creating...</span>
-						<span v-else>Create Group</span>
-					</button>
-				</div>
-			</div>
-		</div>
+          <!-- Create Button -->
+          <button
+            class="btn btn-primary w-100 mt-3"
+            :disabled="!groupName.trim() || creatingGroup"
+            @click="createGroup"
+          >
+            <span v-if="creatingGroup">Creating...</span>
+            <span v-else>Create Group</span>
+          </button>
+        </div>
+      </div>
+    </div>
 
-		<!-- Hidden file input for group photo -->
-		<input
-			type="file"
-			ref="groupPhotoInput"
-			accept="image/*"
-			style="display: none"
-			@change="handleGroupPhotoSelect"
-		/>
+    <!-- Hidden file input for group photo -->
+    <input
+      ref="groupPhotoInput"
+      type="file"
+      accept="image/*"
+      style="display: none"
+      @change="handleGroupPhotoSelect"
+    >
 
-		<!-- Group Photo Edit Modal -->
-		<div v-if="editingGroupPhoto" class="modal-overlay" @click.self="closeGroupPhotoEdit">
-			<div class="modal-content modal-small">
-				<div class="modal-header">
-					<h5>Change Group Photo</h5>
-					<button class="btn-close" @click="closeGroupPhotoEdit"></button>
-				</div>
-				<div class="modal-body text-center">
-					<!-- Current Photo Preview -->
-					<div class="photo-preview">
-						<div v-if="editingGroupPhoto.photoUrl" class="avatar-img large">
-							<img :src="getPhotoUrl(editingGroupPhoto.photoUrl)" :alt="editingGroupPhoto.title" />
-						</div>
-						<div v-else class="avatar-placeholder large">
-							{{ getInitials(editingGroupPhoto.title) }}
-						</div>
-					</div>
-					<p class="group-name-label">{{ editingGroupPhoto.title }}</p>
+    <!-- Group Photo Edit Modal -->
+    <div v-if="editingGroupPhoto" class="modal-overlay" @click.self="closeGroupPhotoEdit">
+      <div class="modal-content modal-small">
+        <div class="modal-header">
+          <h5>Change Group Photo</h5>
+          <button class="btn-close" @click="closeGroupPhotoEdit" />
+        </div>
+        <div class="modal-body text-center">
+          <!-- Current Photo Preview -->
+          <div class="photo-preview">
+            <div v-if="editingGroupPhoto.photoUrl" class="avatar-img large">
+              <img :src="getPhotoUrl(editingGroupPhoto.photoUrl)" :alt="editingGroupPhoto.title">
+            </div>
+            <div v-else class="avatar-placeholder large">
+              {{ getInitials(editingGroupPhoto.title) }}
+            </div>
+          </div>
+          <p class="group-name-label">{{ editingGroupPhoto.title }}</p>
 
-					<!-- Action Buttons -->
-					<div class="photo-actions">
-						<button class="btn btn-primary w-100 mb-2" @click="triggerGroupPhotoInput">
-							📷 Choose Photo
-						</button>
-						<button
-							v-if="editingGroupPhoto.photoUrl"
-							class="btn btn-outline-danger w-100"
-							@click="removeGroupPhoto"
-						>
-							🗑️ Remove Photo
-						</button>
-					</div>
-				</div>
-			</div>
-		</div>
-	</div>
+          <!-- Action Buttons -->
+          <div class="photo-actions">
+            <button class="btn btn-primary w-100 mb-2" @click="triggerGroupPhotoInput">
+              📷 Choose Photo
+            </button>
+            <button
+              v-if="editingGroupPhoto.photoUrl"
+              class="btn btn-outline-danger w-100"
+              @click="removeGroupPhoto"
+            >
+              🗑️ Remove Photo
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>

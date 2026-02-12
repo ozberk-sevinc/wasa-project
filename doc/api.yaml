@@ -14,7 +14,7 @@ info:
     Usernames must be unique across the whole system.
 
 servers:
-  - url: http://localhost:3000
+  - url: http://localhost:3000/v1
     description: Local development server
 
 tags:
@@ -105,7 +105,7 @@ components:
           example: "Özberk Sevinç"
         photoUrl:
           type: string
-          format: uri
+          format: url
           description: URL of the user's profile picture, if set.
           pattern: '^https?://.*$'
           minLength: 1
@@ -147,7 +147,7 @@ components:
           example: "John Doe"
         photoUrl:
           type: string
-          format: uri
+          format: url
           description: Optional conversation or group avatar.
           pattern: '^https?://.*$'
           minLength: 1
@@ -175,8 +175,6 @@ components:
         - id
         - type
         - title
-        - lastMessageAt
-        - lastMessageIsPhoto
 
     Reaction:
       type: object
@@ -253,7 +251,7 @@ components:
           example: "Hello, world!"
         photoUrl:
           type: string
-          format: uri
+          format: url
           description: URL of the photo, if contentType is photo.
           pattern: '^https?://.*$'
           minLength: 1
@@ -314,7 +312,7 @@ components:
           example: "Chat Group"
         photoUrl:
           type: string
-          format: uri
+          format: url
           description: Optional conversation or group avatar.
           pattern: '^https?://.*$'
           minLength: 1
@@ -336,12 +334,38 @@ components:
           maxItems: 10000
         lastMessage:
           description: The most recent message in this conversation (used in summary views).
-          $ref: '#/components/schemas/Message'
+          allOf:
+            - $ref: '#/components/schemas/Message'
         unreadCount:
           type: integer
           description: Number of messages in this conversation that the current user has not yet read.
           minimum: 0
           example: 3
+        lastMessageAt:
+          type: string
+          format: date-time
+          description: When the last message in this conversation was sent.
+          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
+          minLength: 20
+          maxLength: 35
+          example: "2025-01-01T12:00:00Z"
+        lastMessageSnippet:
+          type: string
+          description: Short preview of the last message, or a placeholder like [photo] for non-text content.
+          pattern: '^.{0,200}$'
+          minLength: 0
+          maxLength: 200
+          example: "Hey, how are you?"
+        lastMessageIsPhoto:
+          type: boolean
+          description: True if the most recent message is a photo.
+        userId:
+          type: string
+          description: Id of the other user in a direct conversation (used when creating).
+          pattern: '^[a-zA-Z0-9_-]{1,64}$'
+          minLength: 1
+          maxLength: 64
+          example: "abcdef012345"
       required:
         - id
         - type
@@ -369,7 +393,7 @@ components:
           example: "Work Team"
         photoUrl:
           type: string
-          format: uri
+          format: url
           description: Optional group avatar.
           pattern: '^https?://.*$'
           minLength: 1
@@ -389,6 +413,13 @@ components:
             $ref: '#/components/schemas/User'
           minItems: 1
           maxItems: 256
+        memberIds:
+          type: array
+          description: List of user ids of the group members.
+          items:
+            $ref: '#/components/schemas/Identifier'
+          minItems: 0
+          maxItems: 255
       required:
         - id
         - name
@@ -415,7 +446,7 @@ components:
           example: "Hello, world!"
         photoUrl:
           type: string
-          format: uri
+          format: url
           description: URL of the photo when contentType is photo.
           pattern: '^https?://.*$'
           minLength: 1
@@ -459,7 +490,7 @@ components:
       required:
         - targetConversationId
 
-    CreateConversationRequest:
+    ConversationPrototype:
       type: object
       description: Body used when starting a new direct conversation with another user.
       properties:
@@ -473,7 +504,7 @@ components:
       required:
         - userId
 
-    CreateGroupRequest:
+    GroupPrototype:
       type: object
       description: Body used when creating a new group chat.
       properties:
@@ -617,6 +648,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginResponse'
+              example:
+                identifier: "abcdef012345"
         '400':
           description: The provided username is not valid (for example, too short or too long).
           content:
@@ -637,6 +670,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+              example:
+                id: "abcdef012345"
+                name: "Ozberk"
         '401':
           description: Authorization header is missing or the identifier is invalid.
           content:
@@ -667,6 +703,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+              example:
+                id: "abcdef012345"
+                name: "NewName"
         '400':
           description: The new username is invalid (for example, wrong length).
           content:
@@ -709,6 +748,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+              example:
+                id: "abcdef012345"
+                name: "Ozberk"
+                photoUrl: "https://example.com/photo.jpg"
         '400':
           description: The uploaded image could not be processed.
           content:
@@ -744,6 +787,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SearchUsersResponse'
+              example:
+                users:
+                  - id: "abcdef012345"
+                    name: "Ozberk"
 
   
   # Conversations & messages
@@ -763,7 +810,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateConversationRequest'
+              $ref: '#/components/schemas/ConversationPrototype'
       responses:
         '201':
           description: New conversation created successfully.
@@ -771,12 +818,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Conversation'
+              example:
+                id: "conv123"
+                type: "direct"
+                title: "John Doe"
+                participants:
+                  - id: "user1"
+                    name: "Ozberk"
+                messages: []
         '200':
           description: A direct conversation with this user already exists; returning the existing one.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Conversation'
+              example:
+                id: "conv123"
+                type: "direct"
+                title: "John Doe"
+                participants:
+                  - id: "user1"
+                    name: "Ozberk"
+                messages: []
         '400':
           description: Invalid request (e.g., trying to start a conversation with yourself).
           content:
@@ -805,12 +868,24 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                description: List of conversation summaries for the current user.
-                items:
-                  $ref: '#/components/schemas/ConversationSummary'
-                minItems: 0
-                maxItems: 1000
+                type: object
+                description: Wrapper for the list of conversation summaries.
+                properties:
+                  conversations:
+                    type: array
+                    description: List of conversation summaries for the current user.
+                    items:
+                      $ref: '#/components/schemas/ConversationSummary'
+                    minItems: 0
+                    maxItems: 1000
+                required:
+                  - conversations
+              example:
+                conversations:
+                  - id: "conv123"
+                    type: "direct"
+                    title: "John Doe"
+                    lastMessageSnippet: "Hey, how are you?"
 
   /conversations/{conversationId}:
     get:
@@ -857,6 +932,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Conversation'
+              example:
+                id: "conv123"
+                type: "direct"
+                title: "John Doe"
+                participants:
+                  - id: "user1"
+                    name: "Ozberk"
+                messages: []
         '404':
           description: The conversation does not exist or the user is not a participant.
           content:
@@ -893,6 +976,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Message'
+              example:
+                id: "msg123"
+                conversationId: "conv123"
+                sender:
+                  id: "user1"
+                  name: "Ozberk"
+                createdAt: "2025-01-01T12:00:00Z"
+                contentType: "text"
+                text: "Hello, world!"
+                status: "sent"
+                reactions: []
         '404':
           description: The conversation could not be found or the user is not a participant.
           content:
@@ -949,6 +1043,8 @@ paths:
                     example: "/uploads/messages/abc123/photo.jpg"
                 required:
                   - photoUrl
+              example:
+                photoUrl: "/uploads/messages/abc123/photo.jpg"
         '400':
           description: The uploaded file is missing or invalid.
           content:
@@ -1029,6 +1125,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Message'
+              example:
+                id: "msg456"
+                conversationId: "conv456"
+                sender:
+                  id: "user1"
+                  name: "Ozberk"
+                createdAt: "2025-01-01T12:00:00Z"
+                contentType: "text"
+                text: "Forwarded message"
+                status: "sent"
+                reactions: []
         '404':
           description: The original message or the target conversation could not be found.
           content:
@@ -1068,6 +1175,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Reaction'
+              example:
+                id: "react123"
+                emoji: "\U0001F44D"
+                user:
+                  id: "user1"
+                  name: "Ozberk"
+                createdAt: "2025-01-01T12:00:00Z"
         '404':
           description: The message could not be found.
           content:
@@ -1127,7 +1241,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateGroupRequest'
+              $ref: '#/components/schemas/GroupPrototype'
       responses:
         '201':
           description: Group created successfully.
@@ -1135,6 +1249,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Group'
+              example:
+                id: "group123"
+                name: "Work Team"
+                createdBy: "user1"
+                members:
+                  - id: "user1"
+                    name: "Ozberk"
 
   /groups/{groupId}:
     get:
@@ -1156,6 +1277,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Group'
+              example:
+                id: "group123"
+                name: "Work Team"
+                createdBy: "user1"
+                members:
+                  - id: "user1"
+                    name: "Ozberk"
         '404':
           description: The group does not exist or the user is not a member.
           content:
@@ -1192,6 +1320,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Group'
+              example:
+                id: "group123"
+                name: "Work Team"
+                createdBy: "user1"
+                members:
+                  - id: "user1"
+                    name: "Ozberk"
+                  - id: "user2"
+                    name: "JohnDoe"
         '404':
           description: The group or user could not be found.
           content:
@@ -1248,6 +1385,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Group'
+              example:
+                id: "group123"
+                name: "Renamed Group"
+                createdBy: "user1"
+                members:
+                  - id: "user1"
+                    name: "Ozberk"
         '404':
           description: The group does not exist or the user is not a member.
           content:
@@ -1291,6 +1435,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Group'
+              example:
+                id: "group123"
+                name: "Work Team"
+                photoUrl: "https://example.com/group-photo.jpg"
+                createdBy: "user1"
+                members:
+                  - id: "user1"
+                    name: "Ozberk"
         '404':
           description: The group does not exist or the user is not a member.
           content:

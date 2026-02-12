@@ -58,6 +58,57 @@ export default {
 			);
 		},
 	},
+	watch: {
+		conversationId() {
+			// Clear existing interval and restart with new conversation
+			if (this.refreshInterval) {
+				clearInterval(this.refreshInterval);
+			}
+			
+			// Disconnect and reconnect WebSocket for new conversation
+			this.disconnectWebSocket();
+			this.connectWebSocket();
+			
+			this.loadConversation(); // Show spinner when switching conversations
+			this.refreshInterval = setInterval(() => {
+				this.loadConversation(true); // Silent refresh every 5 seconds
+			}, 5000);
+		},
+	},
+	mounted() {
+		const userData = localStorage.getItem("wasatext_user");
+		if (userData) {
+			this.currentUser = JSON.parse(userData);
+			console.log("Logged in as:", this.currentUser.name, "ID:", this.currentUser.id);
+		} else {
+			console.warn("No user data found in localStorage");
+		}
+		
+		console.log("Loading conversation ID:", this.conversationId);
+		this.loadConversation(); // Initial load with spinner
+		
+				// Connect WebSocket for real-time messaging
+				this.connectWebSocket();
+				// Expose WebSocket globally for child components (GroupInfoPanel)
+				Object.defineProperty(window, 'WS_GLOBAL', {
+					configurable: true,
+					get: () => this.ws
+				});
+		
+		// Auto-refresh messages every 5 seconds as fallback (disabled when WebSocket is active)
+		this.refreshInterval = setInterval(() => {
+			this.loadConversation(true); // Silent refresh, no spinner or scroll jump
+		}, 5000);
+	},
+	beforeUnmount() {
+		// Clean up WebSocket connection
+		this.disconnectWebSocket();
+		
+		// Clean up interval when component is destroyed
+		if (this.refreshInterval) {
+			clearInterval(this.refreshInterval);
+		}
+	},
 	methods: {
 		async loadConversation(silent = false) {
 			// Only show loading spinner on initial load, not on auto-refresh
@@ -373,37 +424,11 @@ export default {
 					// Don't send immediately - wait for user to add text or press send
 					this.$refs.messageInput?.focus();
 				} else if (type === "audio") {
-					// For audio/document, send immediately
-					const fakeUrl = URL.createObjectURL(file);
-					const payload = {
-						contentType: "audio",
-						fileUrl: fakeUrl,
-						fileName: file.name,
-					};
-					if (this.replyingTo) {
-						payload.replyToMessageId = this.replyingTo.id;
-					}
-					const response = await messageAPI.send(this.conversationId, payload);
-					// Don't manually add message - let WebSocket handle it
-					// this.messages.push(response.data);
-					this.replyingTo = null;
-					// WebSocket will scroll automatically
+					// Audio not supported - only text and photo
+					alert("Audio messages are not supported. Only text and photo messages are allowed.");
 				} else {
-					// Document/file - send immediately
-					const fakeUrl = URL.createObjectURL(file);
-					const payload = {
-						contentType: "document",
-						fileUrl: fakeUrl,
-						fileName: file.name,
-					};
-					if (this.replyingTo) {
-						payload.replyToMessageId = this.replyingTo.id;
-					}
-					const response = await messageAPI.send(this.conversationId, payload);
-					// Don't manually add message - let WebSocket handle it
-					// this.messages.push(response.data);
-					this.replyingTo = null;
-					// WebSocket will scroll automatically
+					// Document/file not supported - only text and photo
+					alert("Document messages are not supported. Only text and photo messages are allowed.");
 				}
 			} catch (e) {
 				alert(e.response?.data?.message || "Failed to send file");
@@ -438,12 +463,7 @@ export default {
 		},
 
 		getFileIcon(contentType) {
-			switch (contentType) {
-				case "audio": return "🎵";
-				case "document": return "📄";
-				case "file": return "📎";
-				default: return "📁";
-			}
+			return "📁";
 		},
 
 		async deleteMessage(messageId) {
@@ -737,414 +757,331 @@ getRepliedMessage(messageId) {
 			}
 		},
 	},
-	mounted() {
-		const userData = localStorage.getItem("wasatext_user");
-		if (userData) {
-			this.currentUser = JSON.parse(userData);
-			console.log("Logged in as:", this.currentUser.name, "ID:", this.currentUser.id);
-		} else {
-			console.warn("No user data found in localStorage");
-		}
-		
-		console.log("Loading conversation ID:", this.conversationId);
-		this.loadConversation(); // Initial load with spinner
-		
-		// Connect WebSocket for real-time messaging
-		this.connectWebSocket();
-		
-		// Auto-refresh messages every 5 seconds as fallback (disabled when WebSocket is active)
-		this.refreshInterval = setInterval(() => {
-			this.loadConversation(true); // Silent refresh, no spinner or scroll jump
-		}, 5000);
-	},
-	beforeUnmount() {
-		// Clean up WebSocket connection
-		this.disconnectWebSocket();
-		
-		// Clean up interval when component is destroyed
-		if (this.refreshInterval) {
-			clearInterval(this.refreshInterval);
-		}
-	},
-	watch: {
-		conversationId() {
-			// Clear existing interval and restart with new conversation
-			if (this.refreshInterval) {
-				clearInterval(this.refreshInterval);
-			}
-			
-			// Disconnect and reconnect WebSocket for new conversation
-			this.disconnectWebSocket();
-			this.connectWebSocket();
-			
-			this.loadConversation(); // Show spinner when switching conversations
-			this.refreshInterval = setInterval(() => {
-				this.loadConversation(true); // Silent refresh every 5 seconds
-			}, 5000);
-		},
-	},
 };
 </script>
 
 <template>
-	<div class="chat-container">
-		<!-- Header -->
-		<header class="chat-header">
-			<button class="btn-back" @click="goBack">
-				← Back
-			</button>
-			<div 
-				class="chat-info" 
-				v-if="conversation"
-				:class="{ 'clickable': conversation.type === 'group' }"
-				@click="openGroupInfo"
-				:title="conversation.type === 'group' ? 'Click for group info' : ''"
-			>
-				<div class="chat-avatar">
-					<img 
-						v-if="conversation.photoUrl" 
-						:src="getPhotoUrl(conversation.photoUrl)" 
-						:alt="conversation.title"
-						class="avatar-img-small"
-					/>
-					<div v-else class="avatar-placeholder small">
-						{{ getInitials(conversation.title) }}
-					</div>
-				</div>
-				<div class="chat-title-section">
-					<h2>{{ conversation.title }}</h2>
-					<span class="chat-subtitle" v-if="conversation.type === 'group'">
-						{{ conversation.participants?.length }} members
-					</span>
-				</div>
-			</div>
-			<button class="btn btn-light btn-sm" @click="loadConversation">🔄</button>
-		</header>
+  <div class="chat-container">
+    <!-- Header -->
+    <header class="chat-header">
+      <button class="btn-back" @click="goBack">
+        ← Back
+      </button>
+      <div 
+        v-if="conversation" 
+        class="chat-info"
+        :class="{ 'clickable': conversation.type === 'group' }"
+        :title="conversation.type === 'group' ? 'Click for group info' : ''"
+        @click="openGroupInfo"
+      >
+        <div class="chat-avatar">
+          <img 
+            v-if="conversation.photoUrl" 
+            :src="getPhotoUrl(conversation.photoUrl)" 
+            :alt="conversation.title"
+            class="avatar-img-small"
+          >
+          <div v-else class="avatar-placeholder small">
+            {{ getInitials(conversation.title) }}
+          </div>
+        </div>
+        <div class="chat-title-section">
+          <h2>{{ conversation.title }}</h2>
+          <span v-if="conversation.type === 'group'" class="chat-subtitle">
+            {{ conversation.participants?.length }} members
+          </span>
+        </div>
+      </div>
+      <button class="btn btn-light btn-sm" @click="loadConversation">🔄</button>
+    </header>
 
-		<!-- Loading -->
-		<div v-if="loading" class="chat-loading">
-			<div class="spinner-border text-primary"></div>
-			<p>Loading messages...</p>
-		</div>
+    <!-- Loading -->
+    <div v-if="loading" class="chat-loading">
+      <div class="spinner-border text-primary" />
+      <p>Loading messages...</p>
+    </div>
 
-		<!-- Error -->
-		<div v-else-if="error" class="chat-error">
-			<p>{{ error }}</p>
-			<button class="btn btn-primary" @click="loadConversation">Retry</button>
-		</div>
+    <!-- Error -->
+    <div v-else-if="error" class="chat-error">
+      <p>{{ error }}</p>
+      <button class="btn btn-primary" @click="loadConversation">Retry</button>
+    </div>
 
-		<!-- Messages -->
-		<div v-else class="messages-container" ref="messagesContainer">
-			<div v-if="sortedMessages.length === 0" class="no-messages">
-				<p>No messages yet. Say hello! 👋</p>
-			</div>
+    <!-- Messages -->
+    <div v-else ref="messagesContainer" class="messages-container">
+      <div v-if="sortedMessages.length === 0" class="no-messages">
+        <p>No messages yet. Say hello! 👋</p>
+      </div>
 
-			<template v-for="(message, index) in sortedMessages" :key="message.id">
-				<!-- Date separator -->
-				<div v-if="isNewDay(index)" class="date-separator">
-					<span>{{ formatDate(message.createdAt) }}</span>
-				</div>
+      <template v-for="(message, index) in sortedMessages" :key="message.id">
+        <!-- Date separator -->
+        <div v-if="isNewDay(index)" class="date-separator">
+          <span>{{ formatDate(message.createdAt) }}</span>
+        </div>
 
-				<!-- Message bubble -->
-				<div
-					class="message-wrapper"
-					:class="{ 'own-message': isOwnMessage(message) }"
-					:data-message-id="message.id"
-				>
-				<!-- Sender avatar (for messages from others) -->
-				<div v-if="!isOwnMessage(message)" class="message-avatar">
-					<img 
-						v-if="message.sender?.photoUrl" 
-						:src="getPhotoUrl(message.sender.photoUrl)" 
-						:alt="message.sender?.name"
-						class="avatar-img-small"
-					/>
-					<div v-else class="avatar-placeholder-small">
-						{{ getInitials(message.sender?.name) }}
-					</div>
-				</div>
+        <!-- Message bubble -->
+        <div
+          class="message-wrapper"
+          :class="{ 'own-message': isOwnMessage(message) }"
+          :data-message-id="message.id"
+        >
+          <!-- Sender avatar (for messages from others) -->
+          <div v-if="!isOwnMessage(message)" class="message-avatar">
+            <img 
+              v-if="message.sender?.photoUrl" 
+              :src="getPhotoUrl(message.sender.photoUrl)" 
+              :alt="message.sender?.name"
+              class="avatar-img-small"
+            >
+            <div v-else class="avatar-placeholder-small">
+              {{ getInitials(message.sender?.name) }}
+            </div>
+          </div>
 
-				<div 
-					class="message-bubble"
-					@contextmenu="showContextMenu(message.id, $event)"
-				>
-					<!-- Reply reference -->
-				<div
-					v-if="message.repliedToMessageId"
-					class="reply-reference"
-					@click="scrollToMessage(message.repliedToMessageId)"
-				>
-					<div class="reply-bar"></div>
-					<div class="reply-content">
-						<strong>{{ getRepliedMessage(message.repliedToMessageId)?.sender?.name || "Unknown" }}</strong>
-						<p>
-							<span v-if="getRepliedMessage(message.repliedToMessageId)?.photoUrl" class="reply-photo-icon">📷 </span>
-							{{ getRepliedMessage(message.repliedToMessageId)?.text || (getRepliedMessage(message.repliedToMessageId)?.photoUrl ? "Photo" : "Message") }}
-						</p>
-					</div>
-				</div>
+          <div 
+            class="message-bubble"
+            @contextmenu="showContextMenu(message.id, $event)"
+          >
+            <!-- Reply reference -->
+            <div
+              v-if="message.repliedToMessageId"
+              class="reply-reference"
+              @click="scrollToMessage(message.repliedToMessageId)"
+            >
+              <div class="reply-bar" />
+              <div class="reply-content">
+                <strong>{{ getRepliedMessage(message.repliedToMessageId)?.sender?.name || "Unknown" }}</strong>
+                <p>
+                  <span v-if="getRepliedMessage(message.repliedToMessageId)?.photoUrl" class="reply-photo-icon">📷 </span>
+                  {{ getRepliedMessage(message.repliedToMessageId)?.text || (getRepliedMessage(message.repliedToMessageId)?.photoUrl ? "Photo" : "Message") }}
+                </p>
+              </div>
+            </div>
 
-				<!-- Forwarded marker -->
-				<div v-if="message.isForwarded" class="forwarded-marker">
-					<span class="forwarded-icon">↪️</span>
-					<span class="forwarded-text">Forwarded</span>
-				</div>
+            <!-- Forwarded marker -->
+            <div v-if="message.isForwarded" class="forwarded-marker">
+              <span class="forwarded-icon">↪️</span>
+              <span class="forwarded-text">Forwarded</span>
+            </div>
 
-				<!-- Sender name (for group messages, if not own message) -->
-				<div 
-					v-if="conversation?.type === 'group' && !isOwnMessage(message)" 
-					class="sender-name"
-				>
-					{{ message.sender?.name }}
-				</div>
+            <!-- Sender name (for group messages, if not own message) -->
+            <div 
+              v-if="conversation?.type === 'group' && !isOwnMessage(message)" 
+              class="sender-name"
+            >
+              {{ message.sender?.name }}
+            </div>
 
-				<!-- Content -->
-				<div class="message-content">
-					<!-- Photo -->
-					<img 
-						v-if="message.photoUrl"
-						:src="getPhotoUrl(message.photoUrl)"
-						class="message-photo"
-						alt="Photo"
-					/>
-					<!-- Audio -->
-					<div v-if="message.contentType === 'audio'" class="file-message">
-						<span class="file-icon">🎵</span>
-						<div class="file-info">
-							<span class="file-name">{{ message.fileName || 'Audio' }}</span>
-							<audio :src="message.fileUrl" controls class="audio-player"></audio>
-						</div>
-					</div>
-					<!-- Document / File -->
-					<a
-						v-if="message.contentType === 'document' || message.contentType === 'file'"
-						:href="message.fileUrl"
-						target="_blank"
-						class="file-message file-link"
-					>
-						<span class="file-icon">{{ getFileIcon(message.contentType) }}</span>
-						<div class="file-info">
-							<span class="file-name">{{ message.fileName || 'Document' }}</span>
-							<span class="file-hint">Tap to open</span>
-						</div>
-					</a>
-					<!-- Text -->
-					<p v-if="message.text" class="message-text">{{ message.text }}</p>
-				</div>
+            <!-- Content -->
+            <div class="message-content">
+              <!-- Photo -->
+              <img 
+                v-if="message.photoUrl"
+                :src="getPhotoUrl(message.photoUrl)"
+                class="message-photo"
+                alt="Photo"
+              >
+              <!-- Text -->
+              <p v-if="message.text" class="message-text">{{ message.text }}</p>
+            </div>
 
-				<!-- Footer -->
-				<div class="message-footer">
-					<span class="message-time">{{ formatTime(message.createdAt) }}</span>
-					<span
-						v-if="isOwnMessage(message)"
-						class="message-status"
-						:class="getStatusClass(message.status)"
-					>
-						{{ getStatusIcon(message.status) }}
-					</span>
-				</div>
+            <!-- Footer -->
+            <div class="message-footer">
+              <span class="message-time">{{ formatTime(message.createdAt) }}</span>
+              <span
+                v-if="isOwnMessage(message)"
+                class="message-status"
+                :class="getStatusClass(message.status)"
+              >
+                {{ getStatusIcon(message.status) }}
+              </span>
+            </div>
 
-				<!-- Reactions -->
-				<div v-if="message.reactions?.length > 0" class="message-reactions">
-					<span
-						v-for="group in groupReactionsByEmoji(message.reactions)"
-						:key="group.emoji"
-						class="reaction-badge"
-						:class="{ 'own-reaction': group.currentUserReaction }"
-						@click="toggleReaction(message.id, group.emoji, group.currentUserReaction)"
-						:title="group.users.join(', ')"
-					>
-						{{ group.emoji }}
-						<span v-if="group.count > 1" class="reaction-count">{{ group.count }}</span>
-					</span>
-				</div>
-			</div>
+            <!-- Reactions -->
+            <div v-if="message.reactions?.length > 0" class="message-reactions">
+              <span
+                v-for="group in groupReactionsByEmoji(message.reactions)"
+                :key="group.emoji"
+                class="reaction-badge"
+                :class="{ 'own-reaction': group.currentUserReaction }"
+                :title="group.users.join(', ')"
+                @click="toggleReaction(message.id, group.emoji, group.currentUserReaction)"
+              >
+                {{ group.emoji }}
+                <span v-if="group.count > 1" class="reaction-count">{{ group.count }}</span>
+              </span>
+            </div>
+          </div>
 
-		<!-- Message actions (show on right-click) -->
-		<div 
-			v-if="contextMenuMessageId === message.id"
-			class="message-actions context-menu"
-			@mouseenter="keepContextMenuAlive"
-			@mouseleave="hideContextMenu"
-		>
-			<button @click="setReply(message); hideContextMenu()" title="Reply">
-				<span class="action-icon">↩️</span>
-				<span class="action-label">Reply</span>
-			</button>
-			<button @click="showEmojiPicker = message.id; hideContextMenu()" title="React">
-				<span class="action-icon">😊</span>
-				<span class="action-label">React</span>
-			</button>
-			<button @click="openForwardDialog(message); hideContextMenu()" title="Forward">
-				<span class="action-icon">↪️</span>
-				<span class="action-label">Forward</span>
-			</button>
-			<button
-				v-if="isOwnMessage(message)"
-				@click="deleteMessage(message.id); hideContextMenu()"
-				title="Delete"
-				class="delete-btn"
-			>
-				<span class="action-icon">🗑️</span>
-				<span class="action-label">Delete</span>
-			</button>
-		</div>
+          <!-- Message actions (show on right-click) -->
+          <div 
+            v-if="contextMenuMessageId === message.id"
+            class="message-actions context-menu"
+            @mouseenter="keepContextMenuAlive"
+            @mouseleave="hideContextMenu"
+          >
+            <button title="Reply" @click="setReply(message); hideContextMenu()">
+              <span class="action-icon">↩️</span>
+              <span class="action-label">Reply</span>
+            </button>
+            <button title="React" @click="showEmojiPicker = message.id; hideContextMenu()">
+              <span class="action-icon">😊</span>
+              <span class="action-label">React</span>
+            </button>
+            <button title="Forward" @click="openForwardDialog(message); hideContextMenu()">
+              <span class="action-icon">↪️</span>
+              <span class="action-label">Forward</span>
+            </button>
+            <button
+              v-if="isOwnMessage(message)"
+              title="Delete"
+              class="delete-btn"
+              @click="deleteMessage(message.id); hideContextMenu()"
+            >
+              <span class="action-icon">🗑️</span>
+              <span class="action-label">Delete</span>
+            </button>
+          </div>
 
-		<!-- Emoji picker -->
-		<div v-if="showEmojiPicker === message.id" class="emoji-picker">
-			<button
-				v-for="emoji in commonEmojis"
-				:key="emoji"
-				@click="addReaction(message.id, emoji)"
-			>
-				{{ emoji }}
-			</button>
-			<button @click="showEmojiPicker = null">✕</button>
-		</div>
-	</div>
-</template>
-</div>
+          <!-- Emoji picker -->
+          <div v-if="showEmojiPicker === message.id" class="emoji-picker">
+            <button
+              v-for="emoji in commonEmojis"
+              :key="emoji"
+              @click="addReaction(message.id, emoji)"
+            >
+              {{ emoji }}
+            </button>
+            <button @click="showEmojiPicker = null">✕</button>
+          </div>
+        </div>
+      </template>
+    </div>
 
-<!-- Reply preview -->
-<div v-if="replyingTo" class="reply-preview">
-	<div class="reply-preview-content">
-		<strong>Replying to {{ replyingTo.sender?.name }}</strong>
-		<p>{{ replyingTo.text?.substring(0, 50) }}{{ replyingTo.text?.length > 50 ? "..." : "" }}</p>
-	</div>
-	<button class="btn-cancel-reply" @click="cancelReply">✕</button>
-</div>
+    <!-- Reply preview -->
+    <div v-if="replyingTo" class="reply-preview">
+      <div class="reply-preview-content">
+        <strong>Replying to {{ replyingTo.sender?.name }}</strong>
+        <p>{{ replyingTo.text?.substring(0, 50) }}{{ replyingTo.text?.length > 50 ? "..." : "" }}</p>
+      </div>
+      <button class="btn-cancel-reply" @click="cancelReply">✕</button>
+    </div>
 
-<!-- Photo preview -->
-<div v-if="pendingPhotoUrl" class="photo-preview">
-	<div class="photo-preview-content">
-		<img :src="getPhotoUrl(pendingPhotoUrl)" alt="Preview" class="photo-preview-image" />
-		<span class="photo-preview-label">📷 Photo attached</span>
-	</div>
-	<button class="btn-cancel-photo" @click="cancelPendingPhoto">✕</button>
-</div>
+    <!-- Photo preview -->
+    <div v-if="pendingPhotoUrl" class="photo-preview">
+      <div class="photo-preview-content">
+        <img :src="getPhotoUrl(pendingPhotoUrl)" alt="Preview" class="photo-preview-image">
+        <span class="photo-preview-label">📷 Photo attached</span>
+      </div>
+      <button class="btn-cancel-photo" @click="cancelPendingPhoto">✕</button>
+    </div>
 
-<!-- Hidden file inputs -->
-<input
-	type="file"
-	ref="photoInput"
-	accept="image/*"
-	style="display: none"
-	@change="(e) => handleFileSelect(e, 'photo')"
-/>
-<input
-	type="file"
-	ref="audioInput"
-	accept="audio/*"
-	style="display: none"
-	@change="(e) => handleFileSelect(e, 'audio')"
-/>
-<input
-	type="file"
-	ref="documentInput"
-	accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.ppt,.pptx"
-	style="display: none"
-	@change="(e) => handleFileSelect(e, 'document')"
-/>
+    <!-- Hidden file inputs -->
+    <input
+      ref="photoInput"
+      type="file"
+      accept="image/*"
+      style="display: none"
+      @change="(e) => handleFileSelect(e, 'photo')"
+    >
 
-		<!-- Input area -->
-		<div class="input-area">
-			<!-- Attachment button -->
-			<div class="attach-wrapper">
-				<button class="btn-attach" @click="toggleAttachMenu" type="button">
-					📎
-				</button>
-				<div v-if="showAttachMenu" class="attach-menu">
-					<button @click="triggerFileInput('photo')">📷 Photo</button>
-					<button @click="triggerFileInput('audio')">🎵 Audio</button>
-					<button @click="triggerFileInput('document')">📄 Document</button>
-					<button @click="sendPhotoUrl()">🔗 URL</button>
-				</div>
-			</div>
-			<!-- Emoji button -->
-			<div class="emoji-wrapper">
-				<button class="btn-emoji" @click="toggleInputEmojiPicker" type="button">
-					😊
-				</button>
-				<div v-if="showInputEmojiPicker" class="input-emoji-picker">
-					<button
-						v-for="emoji in inputEmojis"
-						:key="emoji"
-						@click="insertEmoji(emoji)"
-						type="button"
-					>
-						{{ emoji }}
-					</button>
-				</div>
-			</div>
-			<input
-				ref="messageInput"
-				type="text"
-				class="form-control"
-				placeholder="Type a message..."
-				v-model="newMessage"
-				@keyup.enter="sendMessage"
-				:disabled="sending"
-			/>
-			<button
-				class="btn btn-primary btn-send"
-				@click="sendMessage"
-				:disabled="!newMessage.trim() || sending"
-			>
-				<span v-if="sending" class="spinner-border spinner-border-sm"></span>
-				<span v-else>Send</span>
-			</button>
+    <!-- Input area -->
+    <div class="input-area">
+      <!-- Attachment button -->
+      <div class="attach-wrapper">
+        <button class="btn-attach" type="button" @click="toggleAttachMenu">
+          📎
+        </button>
+        <div v-if="showAttachMenu" class="attach-menu">
+          <button @click="triggerFileInput('photo')">📷 Photo</button>
+          <button @click="sendPhotoUrl()">🔗 URL</button>
+        </div>
+      </div>
+      <!-- Emoji button -->
+      <div class="emoji-wrapper">
+        <button class="btn-emoji" type="button" @click="toggleInputEmojiPicker">
+          😊
+        </button>
+        <div v-if="showInputEmojiPicker" class="input-emoji-picker">
+          <button
+            v-for="emoji in inputEmojis"
+            :key="emoji"
+            type="button"
+            @click="insertEmoji(emoji)"
+          >
+            {{ emoji }}
+          </button>
+        </div>
+      </div>
+      <input
+        ref="messageInput"
+        v-model="newMessage"
+        type="text"
+        class="form-control"
+        placeholder="Type a message..."
+        :disabled="sending"
+        @keyup.enter="sendMessage"
+      >
+      <button
+        class="btn btn-primary btn-send"
+        :disabled="!newMessage.trim() || sending"
+        @click="sendMessage"
+      >
+        <span v-if="sending" class="spinner-border spinner-border-sm" />
+        <span v-else>Send</span>
+      </button>
 
-		<!-- Group Info Panel -->
-		<GroupInfoPanel
-			v-if="conversation?.type === 'group'"
-			:show="showGroupInfo"
-			:group-id="conversationId"
-			:current-user-id="currentUser?.id"
-			@close="showGroupInfo = false"
-			@group-updated="handleGroupUpdated"
-			@left-group="handleLeftGroup"
-		/>
+      <!-- Group Info Panel -->
+      <GroupInfoPanel
+        v-if="conversation?.type === 'group'"
+        :show="showGroupInfo"
+        :group-id="conversationId"
+        :current-user-id="currentUser?.id"
+        @close="showGroupInfo = false"
+        @group-updated="handleGroupUpdated"
+        @left-group="handleLeftGroup"
+      />
 
-		<!-- Forward Message Dialog -->
-		<div v-if="showForwardDialog" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5)">
-			<div class="modal-dialog">
-				<div class="modal-content">
-					<div class="modal-header">
-						<h5 class="modal-title">Forward Message</h5>
-						<button type="button" class="btn-close" @click="cancelForward"></button>
-					</div>
-					<div class="modal-body">
-						<p class="text-muted mb-3">Select a conversation to forward this message to:</p>
-						<div class="list-group">
-							<button
-								v-for="conv in conversations"
-								:key="conv.id"
-								class="list-group-item list-group-item-action d-flex align-items-center"
-								@click="forwardMessage(conv.id)"
-								:disabled="conv.id === conversationId"
-							>
-								<div class="avatar-placeholder small me-3">
-									{{ getInitials(conv.title) }}
-								</div>
-								<div class="flex-grow-1">
-									<div class="fw-bold">{{ conv.title }}</div>
-									<small class="text-muted">{{ conv.type === 'group' ? 'Group' : 'Direct' }}</small>
-								</div>
-								<span v-if="conv.id === conversationId" class="badge bg-secondary">Current</span>
-							</button>
-						</div>
-						<div v-if="conversations.length === 0" class="text-center text-muted py-3">
-							No other conversations available
-						</div>
-					</div>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" @click="cancelForward">Cancel</button>
-					</div>
-				</div>
-			</div>
-		</div>
-		</div>
-	</div>
+      <!-- Forward Message Dialog -->
+      <div v-if="showForwardDialog" class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Forward Message</h5>
+              <button type="button" class="btn-close" @click="cancelForward" />
+            </div>
+            <div class="modal-body">
+              <p class="text-muted mb-3">Select a conversation to forward this message to:</p>
+              <div class="list-group">
+                <button
+                  v-for="conv in conversations"
+                  :key="conv.id"
+                  class="list-group-item list-group-item-action d-flex align-items-center"
+                  :disabled="conv.id === conversationId"
+                  @click="forwardMessage(conv.id)"
+                >
+                  <div class="avatar-placeholder small me-3">
+                    {{ getInitials(conv.title) }}
+                  </div>
+                  <div class="flex-grow-1">
+                    <div class="fw-bold">{{ conv.title }}</div>
+                    <small class="text-muted">{{ conv.type === 'group' ? 'Group' : 'Direct' }}</small>
+                  </div>
+                  <span v-if="conv.id === conversationId" class="badge bg-secondary">Current</span>
+                </button>
+              </div>
+              <div v-if="conversations.length === 0" class="text-center text-muted py-3">
+                No other conversations available
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" @click="cancelForward">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>

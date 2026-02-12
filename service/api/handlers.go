@@ -14,6 +14,15 @@ import (
 )
 
 // ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const (
+	selfConversationTitle = "Message Yourself"
+	contentTypePhoto      = "photo"
+)
+
+// ============================================================================
 // RESPONSE TYPES (matching api.yaml schemas)
 // ============================================================================
 
@@ -82,8 +91,6 @@ type MessageResponse struct {
 	ContentType        string             `json:"contentType"`
 	Text               *string            `json:"text,omitempty"`
 	PhotoURL           *string            `json:"photoUrl,omitempty"`
-	FileURL            *string            `json:"fileUrl,omitempty"`
-	FileName           *string            `json:"fileName,omitempty"`
 	RepliedToMessageID *string            `json:"repliedToMessageId,omitempty"`
 	Status             string             `json:"status"`
 	Reactions          []ReactionResponse `json:"reactions"`
@@ -118,8 +125,6 @@ type SendMessageRequest struct {
 	ContentType      string  `json:"contentType"`
 	Text             *string `json:"text,omitempty"`
 	PhotoURL         *string `json:"photoUrl,omitempty"`
-	FileURL          *string `json:"fileUrl,omitempty"`
-	FileName         *string `json:"fileName,omitempty"`
 	ReplyToMessageID *string `json:"replyToMessageId,omitempty"`
 }
 
@@ -421,7 +426,7 @@ func (rt *_router) startConversation(w http.ResponseWriter, r *http.Request, ps 
 		// Set title appropriately for self-conversation
 		existingTitle := targetUser.Name
 		if isSelfConversation {
-			existingTitle = "Message Yourself"
+			existingTitle = selfConversationTitle
 		}
 
 		sendJSON(w, http.StatusOK, ConversationResponse{
@@ -441,10 +446,10 @@ func (rt *_router) startConversation(w http.ResponseWriter, r *http.Request, ps 
 	// For self-conversation, set a special name
 	convName := ""
 	if isSelfConversation {
-		convName = "Message Yourself"
+		convName = selfConversationTitle
 	}
 
-	if err := rt.db.CreateConversation(convID.String(), "direct", convName, nil); err != nil {
+	if err := rt.db.CreateConversation(convID.String(), "direct", convName, nil, globaltime.Now().UTC().Format("2006-01-02T15:04:05Z")); err != nil {
 		ctx.Logger.WithError(err).Error("error creating conversation")
 		sendInternalError(w, "Error creating conversation")
 		return
@@ -459,7 +464,7 @@ func (rt *_router) startConversation(w http.ResponseWriter, r *http.Request, ps 
 	// Set title for self-conversation
 	title := targetUser.Name
 	if isSelfConversation {
-		title = "Message Yourself"
+		title = selfConversationTitle
 	}
 
 	// Build participants list
@@ -481,12 +486,12 @@ func (rt *_router) startConversation(w http.ResponseWriter, r *http.Request, ps 
 	}
 
 	// Broadcast new conversation to both participants (for real-time conversations list update)
-	rt.wsHub.SendToUser(user.ID, WebSocketMessage{
+	_ = rt.wsHub.SendToUser(user.ID, WebSocketMessage{
 		Type:    "new_conversation",
 		Payload: conversationResponse,
 	})
 	if !isSelfConversation {
-		rt.wsHub.SendToUser(req.UserID, WebSocketMessage{
+		_ = rt.wsHub.SendToUser(req.UserID, WebSocketMessage{
 			Type:    "new_conversation",
 			Payload: conversationResponse,
 		})
@@ -728,8 +733,6 @@ func (rt *_router) getConversation(w http.ResponseWriter, r *http.Request, ps ht
 			ContentType:        m.ContentType,
 			Text:               m.Text,
 			PhotoURL:           m.PhotoURL,
-			FileURL:            m.FileURL,
-			FileName:           m.FileName,
 			RepliedToMessageID: m.RepliedToMessageID,
 			Status:             messageStatus,
 			Reactions:          reactionResponses,
@@ -793,9 +796,9 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 	}
 
 	// Validate content type
-	validTypes := map[string]bool{"text": true, "photo": true, "audio": true, "document": true, "file": true}
+	validTypes := map[string]bool{"text": true, contentTypePhoto: true}
 	if !validTypes[req.ContentType] {
-		sendBadRequest(w, "contentType must be 'text', 'photo', 'audio', 'document', or 'file'")
+		sendBadRequest(w, "contentType must be 'text' or 'photo'")
 		return
 	}
 
@@ -804,12 +807,8 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		sendBadRequest(w, "text or photoUrl is required for text messages")
 		return
 	}
-	if req.ContentType == "photo" && (req.PhotoURL == nil || *req.PhotoURL == "") {
+	if req.ContentType == contentTypePhoto && (req.PhotoURL == nil || *req.PhotoURL == "") {
 		sendBadRequest(w, "photoUrl is required for photo messages")
-		return
-	}
-	if (req.ContentType == "audio" || req.ContentType == "document" || req.ContentType == "file") && (req.FileURL == nil || *req.FileURL == "") {
-		sendBadRequest(w, "fileUrl is required for audio/document/file messages")
 		return
 	}
 
@@ -825,8 +824,6 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		ContentType:        req.ContentType,
 		Text:               req.Text,
 		PhotoURL:           req.PhotoURL,
-		FileURL:            req.FileURL,
-		FileName:           req.FileName,
 		RepliedToMessageID: req.ReplyToMessageID,
 		Status:             database.StatusSent,
 		IsForwarded:        false,
@@ -851,8 +848,6 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 		ContentType:        msg.ContentType,
 		Text:               msg.Text,
 		PhotoURL:           msg.PhotoURL,
-		FileURL:            msg.FileURL,
-		FileName:           msg.FileName,
 		RepliedToMessageID: msg.RepliedToMessageID,
 		Status:             msg.Status,
 		Reactions:          []ReactionResponse{},
@@ -877,7 +872,7 @@ func (rt *_router) sendMessage(w http.ResponseWriter, r *http.Request, ps httpro
 			Payload: map[string]interface{}{
 				"conversationId":     conversationID,
 				"lastMessageSnippet": msg.Text,
-				"lastMessageIsPhoto": msg.ContentType == "photo",
+				"lastMessageIsPhoto": msg.ContentType == contentTypePhoto,
 				"lastMessageAt":      msg.CreatedAt,
 			},
 		})
@@ -974,8 +969,6 @@ func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps htt
 		ContentType:    origMsg.ContentType,
 		Text:           origMsg.Text,
 		PhotoURL:       origMsg.PhotoURL,
-		FileURL:        origMsg.FileURL,
-		FileName:       origMsg.FileName,
 		Status:         database.StatusSent,
 		IsForwarded:    true,
 	}
@@ -999,8 +992,6 @@ func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps htt
 		ContentType: newMsg.ContentType,
 		Text:        newMsg.Text,
 		PhotoURL:    newMsg.PhotoURL,
-		FileURL:     newMsg.FileURL,
-		FileName:    newMsg.FileName,
 		Status:      newMsg.Status,
 		Reactions:   []ReactionResponse{},
 		IsForwarded: newMsg.IsForwarded,
@@ -1024,7 +1015,7 @@ func (rt *_router) forwardMessage(w http.ResponseWriter, r *http.Request, ps htt
 			Payload: map[string]interface{}{
 				"conversationId":     req.TargetConversationID,
 				"lastMessageSnippet": newMsg.Text,
-				"lastMessageIsPhoto": newMsg.ContentType == "photo",
+				"lastMessageIsPhoto": newMsg.ContentType == contentTypePhoto,
 				"lastMessageAt":      newMsg.CreatedAt,
 			},
 		})
@@ -1193,7 +1184,7 @@ func (rt *_router) createGroup(w http.ResponseWriter, r *http.Request, ps httpro
 	groupID, _ := uuid.NewV4()
 
 	// Create the group conversation
-	if err := rt.db.CreateConversation(groupID.String(), "group", req.Name, &user.ID); err != nil {
+	if err := rt.db.CreateConversation(groupID.String(), "group", req.Name, &user.ID, globaltime.Now().UTC().Format("2006-01-02T15:04:05Z")); err != nil {
 		ctx.Logger.WithError(err).Error("error creating group")
 		sendInternalError(w, "Error creating group")
 		return
@@ -1233,7 +1224,7 @@ func (rt *_router) createGroup(w http.ResponseWriter, r *http.Request, ps httpro
 	// Broadcast new group to all participants (creator + members) for real-time conversations list update
 	allParticipantIDs := append([]string{user.ID}, req.MemberIDs...)
 	for _, participantID := range allParticipantIDs {
-		rt.wsHub.SendToUser(participantID, WebSocketMessage{
+		_ = rt.wsHub.SendToUser(participantID, WebSocketMessage{
 			Type: "new_conversation",
 			Payload: ConversationResponse{
 				ID:           groupID.String(),

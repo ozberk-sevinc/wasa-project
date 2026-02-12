@@ -1,160 +1,160 @@
 <template>
-	<div v-if="show" class="panel-overlay" @click.self="close">
-		<div class="panel-container">
-			<!-- Header -->
-			<div class="panel-header">
-				<h2>Group Info</h2>
-				<button class="btn-close-panel" @click="close">✕</button>
-			</div>
+  <div v-if="show" class="panel-overlay" @click.self="close">
+    <div class="panel-container">
+      <!-- Header -->
+      <div class="panel-header">
+        <h2>Group Info</h2>
+        <button class="btn-close-panel" @click="close">✕</button>
+      </div>
 
-			<!-- Loading -->
-			<div v-if="loading" class="panel-loading">
-				<div class="spinner-border"></div>
-			</div>
+      <!-- Loading -->
+      <div v-if="loading" class="panel-loading">
+        <div class="spinner-border" />
+      </div>
 
-			<!-- Error -->
-			<div v-else-if="error" class="panel-error">{{ error }}</div>
+      <!-- Error -->
+      <div v-else-if="error" class="panel-error">{{ error }}</div>
 
-			<!-- Content -->
-			<div v-else-if="group" class="panel-body">
-				<!-- Group Avatar -->
-				<div class="group-avatar-section">
-					<div class="group-avatar-large">
-						<img
-							v-if="group.photoUrl"
-							:src="getPhotoUrl(group.photoUrl)"
-							:alt="group.name"
-							class="avatar-img"
-						/>
-						<div v-else class="avatar-placeholder">
-							{{ getInitials(group.name) }}
-						</div>
-					</div>
-				</div>
+      <!-- Content -->
+      <div v-else-if="group" class="panel-body">
+        <!-- Group Avatar -->
+        <div class="group-avatar-section">
+          <div class="group-avatar-large">
+            <img
+              v-if="group.photoUrl"
+              :src="getPhotoUrl(group.photoUrl)"
+              :alt="group.name"
+              class="avatar-img"
+            >
+            <div v-else class="avatar-placeholder">
+              {{ getInitials(group.name) }}
+            </div>
+          </div>
+        </div>
 
-				<!-- Group Name -->
-				<div class="group-name-section">
-					<label class="field-label">Group Name</label>
-					<div v-if="!editingName" class="name-display">
-						<span class="name-value">{{ group.name }}</span>
-						<button class="btn-edit" @click="startEditName" title="Edit group name">
-							✏️
-						</button>
-					</div>
-					<div v-else class="name-edit">
-						<input
-							v-model="newGroupName"
-							type="text"
-							class="edit-input"
-							placeholder="Enter new group name"
-							@keyup.enter="saveGroupName"
-						/>
-						<div class="edit-actions">
-							<button class="btn-cancel" @click="cancelEditName">Cancel</button>
-							<button class="btn-save" @click="saveGroupName">Save</button>
-						</div>
-					</div>
-				</div>
+        <!-- Group Name -->
+        <div class="group-name-section">
+          <label class="field-label">Group Name</label>
+          <div v-if="!editingName" class="name-display">
+            <span class="name-value">{{ group.name }}</span>
+            <button class="btn-edit" title="Edit group name" @click="startEditName">
+              ✏️
+            </button>
+          </div>
+          <div v-else class="name-edit">
+            <input
+              v-model="newGroupName"
+              type="text"
+              class="edit-input"
+              placeholder="Enter new group name"
+              @keyup.enter="saveGroupName"
+            >
+            <div class="edit-actions">
+              <button class="btn-cancel" @click="cancelEditName">Cancel</button>
+              <button class="btn-save" @click="saveGroupName">Save</button>
+            </div>
+          </div>
+        </div>
 
-				<!-- Members -->
-				<div class="members-section">
-					<div class="members-header">
-						<span class="field-label">Members ({{ group.members.length }})</span>
-						<button class="btn-add-member" @click="showAddMember = true">+ Add</button>
-					</div>
+        <!-- Members -->
+        <div class="members-section">
+          <div class="members-header">
+            <span class="field-label">Members ({{ group.members.length }})</span>
+            <button class="btn-add-member" @click="showAddMember = true">+ Add</button>
+          </div>
 
-					<div class="members-list">
-						<div
-							v-for="member in group.members"
-							:key="member.id"
-							class="member-item"
-						>
-							<div class="member-avatar">
-								<img
-									v-if="member.photoUrl"
-									:src="getPhotoUrl(member.photoUrl)"
-									:alt="member.name"
-									class="avatar-img-sm"
-								/>
-								<div v-else class="avatar-placeholder-sm">
-									{{ getInitials(member.name) }}
-								</div>
-							</div>
-							<div class="member-info">
-								<span class="member-name">{{ member.displayName || member.name }}</span>
-								<span class="member-username">@{{ member.name }}</span>
-							</div>
-							<span v-if="member.id === group.createdBy" class="creator-badge">Creator</span>
-						</div>
-					</div>
-				</div>
+          <div class="members-list">
+            <div
+              v-for="member in group.members"
+              :key="member.id"
+              class="member-item"
+            >
+              <div class="member-avatar">
+                <img
+                  v-if="member.photoUrl"
+                  :src="getPhotoUrl(member.photoUrl)"
+                  :alt="member.name"
+                  class="avatar-img-sm"
+                >
+                <div v-else class="avatar-placeholder-sm">
+                  {{ getInitials(member.name) }}
+                </div>
+              </div>
+              <div class="member-info">
+                <span class="member-name">{{ member.displayName || member.name }}</span>
+                <span class="member-username">@{{ member.name }}</span>
+              </div>
+              <span v-if="member.id === group.createdBy" class="creator-badge">Creator</span>
+            </div>
+          </div>
+        </div>
 
-				<!-- Leave Group -->
-				<button class="btn-leave" @click="confirmLeaveGroup">
-					🚪 Leave Group
-				</button>
-			</div>
-		</div>
+        <!-- Leave Group -->
+        <button class="btn-leave" @click="confirmLeaveGroup">
+          🚪 Leave Group
+        </button>
+      </div>
+    </div>
 
-		<!-- Add Member Sub-Modal -->
-		<div v-if="showAddMember" class="panel-overlay sub-modal" @click.self="showAddMember = false">
-			<div class="panel-container panel-small">
-				<div class="panel-header">
-					<h2>Add Member</h2>
-					<button class="btn-close-panel" @click="showAddMember = false">✕</button>
-				</div>
-				<div class="panel-body">
-					<input
-						v-model="memberSearchQuery"
-						type="text"
-						class="edit-input"
-						placeholder="Search users..."
-						@input="searchUsers"
-					/>
+    <!-- Add Member Sub-Modal -->
+    <div v-if="showAddMember" class="panel-overlay sub-modal" @click.self="showAddMember = false">
+      <div class="panel-container panel-small">
+        <div class="panel-header">
+          <h2>Add Member</h2>
+          <button class="btn-close-panel" @click="showAddMember = false">✕</button>
+        </div>
+        <div class="panel-body">
+          <input
+            v-model="memberSearchQuery"
+            type="text"
+            class="edit-input"
+            placeholder="Search users..."
+            @input="searchUsers"
+          >
 
-					<div v-if="searchingUsers" class="panel-loading small">
-						<div class="spinner-border"></div>
-					</div>
+          <div v-if="searchingUsers" class="panel-loading small">
+            <div class="spinner-border" />
+          </div>
 
-					<div v-else-if="searchResults.length > 0" class="members-list">
-						<div
-							v-for="user in searchResults"
-							:key="user.id"
-							class="member-item clickable"
-							:class="{ disabled: isAlreadyMember(user.id) }"
-							@click="!isAlreadyMember(user.id) && addMember(user.id)"
-						>
-							<div class="member-avatar">
-								<img
-									v-if="user.photoUrl"
-									:src="getPhotoUrl(user.photoUrl)"
-									:alt="user.name"
-									class="avatar-img-sm"
-								/>
-								<div v-else class="avatar-placeholder-sm">
-									{{ getInitials(user.name) }}
-								</div>
-							</div>
-							<div class="member-info">
-								<span class="member-name">{{ user.displayName || user.name }}</span>
-								<span class="member-username">@{{ user.name }}</span>
-							</div>
-							<span v-if="isAlreadyMember(user.id)" class="already-badge">Added</span>
-						</div>
-					</div>
+          <div v-else-if="searchResults.length > 0" class="members-list">
+            <div
+              v-for="user in searchResults"
+              :key="user.id"
+              class="member-item clickable"
+              :class="{ disabled: isAlreadyMember(user.id) }"
+              @click="!isAlreadyMember(user.id) && addMember(user.id)"
+            >
+              <div class="member-avatar">
+                <img
+                  v-if="user.photoUrl"
+                  :src="getPhotoUrl(user.photoUrl)"
+                  :alt="user.name"
+                  class="avatar-img-sm"
+                >
+                <div v-else class="avatar-placeholder-sm">
+                  {{ getInitials(user.name) }}
+                </div>
+              </div>
+              <div class="member-info">
+                <span class="member-name">{{ user.displayName || user.name }}</span>
+                <span class="member-username">@{{ user.name }}</span>
+              </div>
+              <span v-if="isAlreadyMember(user.id)" class="already-badge">Added</span>
+            </div>
+          </div>
 
-					<div v-else-if="memberSearchQuery" class="empty-text">
-						No users found
-					</div>
-				</div>
-			</div>
-		</div>
-	</div>
+          <div v-else-if="memberSearchQuery" class="empty-text">
+            No users found
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script>
 import { groupAPI, userAPI } from "@/services/api.js";
-import { API_URL } from "@/services/axios.js";
+import { API_URL } from "@/services/api.js";
 
 export default {
 	name: "GroupInfoPanel",
@@ -172,6 +172,8 @@ export default {
 			required: false,
 		},
 	},
+	emits: ["group-updated", "left-group", "close"],
+	
 	data() {
 		return {
 			group: null,
@@ -198,9 +200,24 @@ export default {
 		},
 	},
 	mounted() {
-		if (this.show) {
-			this.loadGroupInfo();
-		}
+			if (this.show) {
+					this.loadGroupInfo();
+			}
+			// Listen for group_updated WebSocket events
+			this._wsHandler = (event) => {
+				try {
+					const data = JSON.parse(event.data);
+					if (data.type === "group_updated" && data.payload.groupId === this.groupId) {
+						if (this.group) {
+							if (data.payload.name) this.group.name = data.payload.name;
+							if (data.payload.photoUrl !== undefined) this.group.photoUrl = data.payload.photoUrl;
+						}
+					}
+				} catch (e) {}
+			};
+			if (window.WS_GLOBAL) {
+				window.WS_GLOBAL.addEventListener("message", this._wsHandler);
+			}
 	},
 	methods: {
 		async loadGroupInfo() {
@@ -300,6 +317,10 @@ export default {
 		},
 
 		close() {
+			// Remove WebSocket listener
+			if (window.WS_GLOBAL && this._wsHandler) {
+			  window.WS_GLOBAL.removeEventListener("message", this._wsHandler);
+			}
 			this.$emit("close");
 		},
 

@@ -126,7 +126,9 @@ func (h *WebSocketHub) SendToUser(userID string, message WebSocketMessage) error
 // BroadcastToUsers sends a message to multiple users
 func (h *WebSocketHub) BroadcastToUsers(userIDs []string, message WebSocketMessage) {
 	for _, userID := range userIDs {
-		go h.SendToUser(userID, message)
+		go func(uid string) {
+			_ = h.SendToUser(uid, message)
+		}(userID)
 	}
 }
 
