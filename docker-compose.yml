@@ -7,7 +7,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./data:/data
+      - wasatext-data:/data
       - ./uploads:/app/uploads
     environment:
       - CGO_ENABLED=1
@@ -37,4 +37,4 @@ networks:
     driver: bridge
 
 volumes:
-  data:
+  wasatext-data:
