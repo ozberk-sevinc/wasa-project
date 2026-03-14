@@ -2,6 +2,12 @@
 
 A real-time messaging web application built for the [Web and Software Architecture](http://gamificationlab.uniroma1.it/en/wasa/) course. WASAText supports user authentication, 1-on-1 and group conversations, text & photo messages, emoji reactions, and live updates via WebSockets.
 
+## Final Scores
+30 | OpenAPI	   
+30 | Go
+26 | Vue.js
+23 | Docker
+			
 ## Tech Stack
 
 | Layer    | Technology                                               |
