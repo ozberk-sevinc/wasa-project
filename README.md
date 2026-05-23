@@ -3,6 +3,9 @@
 ## Course Work for Sapienza ACSAI degree
 A real-time messaging web application built for the [Web and Software Architecture](http://gamificationlab.uniroma1.it/en/wasa/) course. WASAText supports user authentication, 1-on-1 and group conversations, text & photo messages, emoji reactions, and live updates via WebSockets.
 
+# Small tip for newcomers and students of ACSAI
+I honestly don't remember the repo but there is a linter for this project. It will be REALLY useful for those who cannot get 30/30 in OpenAPI section.(always small errors in grading website:))
+
 ## Final Scores
 * 30 | OpenAPI	   
 * 30 | Go
